@@ -2,12 +2,36 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatUsd } from "../lib/formatters";
 
+const CAT_COLORS: Record<string, string> = {
+  ERROR: "#C82D40",
+  SLOWDOWN: "#E87722",
+  AVAILABILITY: "#F5A800",
+  RESOURCE_CONTENTION: "#9B59B6",
+  CUSTOM_ALERT: "#1496FF",
+  MONITORING_UNAVAILABLE: "#888",
+};
+
+function catLabel(cat: string): string {
+  const MAP: Record<string, string> = {
+    ERROR: "Err",
+    SLOWDOWN: "Slow",
+    AVAILABILITY: "Avail",
+    RESOURCE_CONTENTION: "Res",
+    CUSTOM_ALERT: "Alert",
+    MONITORING_UNAVAILABLE: "Mon",
+  };
+  return MAP[cat] ?? cat.slice(0, 4);
+}
+
 export interface HoneycombCell {
   ci: string;
   appName?: string;
   tier?: string;
+  director?: string;
   problemCount: number;
   revenueAtRisk: number;
+  categories?: Record<string, number>;
+  oldestStart?: string;
 }
 
 interface HoneycombChartProps {
@@ -16,34 +40,132 @@ interface HoneycombChartProps {
   onSelect?: (ci: string | null) => void;
 }
 
-const R = 22;
-const SQRT3 = Math.sqrt(3);
-const COL_W = SQRT3 * R;
-const ROW_H = 1.5 * R;
-const PAD = R + 6;
+// ── Flat-top hex geometry ─────────────────────────────────────────────────
+const R = 30;
+const HEX_W = 2 * R;                 // 60 — tip to tip
+const HEX_H = Math.sqrt(3) * R;      // ≈52 — flat to flat
+const COL_STEP = 1.5 * R;            // 45 — horizontal spacing
+const ROW_STEP = HEX_H;              // ≈52 — vertical spacing
+const PAD = R + 10;
 
 function hexPoints(cx: number, cy: number, r: number): string {
-  const pts: string[] = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 3) * i - Math.PI / 6;
-    pts.push(`${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`);
-  }
-  return pts.join(" ");
+  return Array.from({ length: 6 }, (_, i) => {
+    const a = (Math.PI / 3) * i;
+    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+  }).join(" ");
 }
 
-function severityColor(count: number): { fill: string; stroke: string; strokeW: number } {
-  if (count === 0) return { fill: "rgba(128,128,128,0.07)", stroke: "rgba(128,128,128,0.22)", strokeW: 0.8 };
-  if (count === 1) return { fill: "#FEAA2F", stroke: "rgba(0,0,0,0.18)", strokeW: 1 };
-  if (count === 2) return { fill: "#ED6910", stroke: "rgba(0,0,0,0.18)", strokeW: 1 };
-  if (count <= 4) return { fill: "#D94030", stroke: "rgba(0,0,0,0.18)", strokeW: 1 };
-  return { fill: "#9A1E2C", stroke: "#fff", strokeW: 1.5 };
+function sevFill(n: number): string {
+  if (n === 0) return "rgba(180,180,200,0.06)";
+  if (n === 1) return "#8B5E00";
+  if (n === 2) return "#9A3A00";
+  if (n <= 4)  return "#8C1F00";
+  return "#640808";
 }
 
-interface TooltipState {
-  cell: HoneycombCell;
-  x: number;
-  y: number;
+function sevHighlight(n: number): string {
+  if (n === 0) return "rgba(180,180,200,0.25)";
+  if (n === 1) return "#ECA010";
+  if (n === 2) return "#D05800";
+  if (n <= 4)  return "#C23000";
+  return "#A01010";
 }
+
+// ── Tooltip ───────────────────────────────────────────────────────────────
+
+interface TooltipState { cell: HoneycombCell; x: number; y: number }
+
+function relTime(iso: string | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+  if (ms < 86_400_000) return `${(ms / 3_600_000).toFixed(1)}h ago`;
+  return `${(ms / 86_400_000).toFixed(1)}d ago`;
+}
+
+const HexTooltip = ({ cell }: { cell: HoneycombCell }) => {
+  const cats = cell.categories
+    ? Object.entries(cell.categories).sort((a, b) => b[1] - a[1])
+    : [];
+
+  return (
+    <div
+      style={{
+        background: "rgba(10,11,18,0.97)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        borderRadius: 8,
+        padding: "12px 14px",
+        minWidth: 230,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ fontFamily: "monospace", fontWeight: 800, fontSize: 14, color: "#fff", marginBottom: 3 }}>
+        {cell.ci}
+      </div>
+      {cell.appName && (
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginBottom: 8, lineHeight: 1.4 }}>
+          {cell.appName}
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", rowGap: 5, columnGap: 12, fontSize: 11 }}>
+        {cell.tier && (
+          <>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>Tier</span>
+            <span style={{ color: "#fff" }}>{cell.tier}</span>
+          </>
+        )}
+        {cell.director && (
+          <>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>Owner</span>
+            <span style={{ color: "#fff" }}>{cell.director}</span>
+          </>
+        )}
+        <span style={{ color: "rgba(255,255,255,0.4)" }}>Active</span>
+        <span style={{ fontWeight: 700, color: cell.problemCount >= 5 ? "#ff7080" : cell.problemCount > 0 ? "#ECA010" : "rgba(255,255,255,0.4)" }}>
+          {cell.problemCount} {cell.problemCount === 1 ? "problem" : "problems"}
+        </span>
+        {cats.length > 0 && (
+          <>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>Breakdown</span>
+            <span style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {cats.map(([cat, cnt]) => (
+                <span
+                  key={cat}
+                  style={{
+                    background: `${CAT_COLORS[cat] ?? "#888"}22`,
+                    color: CAT_COLORS[cat] ?? "#aaa",
+                    border: `1px solid ${CAT_COLORS[cat] ?? "#888"}44`,
+                    borderRadius: 4,
+                    padding: "1px 5px",
+                    fontSize: 10,
+                    fontWeight: 600,
+                  }}
+                >
+                  {cnt} {catLabel(cat)}
+                </span>
+              ))}
+            </span>
+          </>
+        )}
+        {cell.revenueAtRisk > 0 && (
+          <>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>Rev. at Risk</span>
+            <span style={{ color: "#ff7080", fontWeight: 700 }}>{formatUsd(cell.revenueAtRisk)}</span>
+          </>
+        )}
+        {cell.oldestStart && (
+          <>
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>Oldest</span>
+            <span style={{ color: "rgba(255,255,255,0.7)" }}>{relTime(cell.oldestStart)}</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── Main component ─────────────────────────────────────────────────────────
 
 export const HoneycombChart = ({ cells, selectedCi, onSelect }: HoneycombChartProps) => {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -52,20 +174,26 @@ export const HoneycombChart = ({ cells, selectedCi, onSelect }: HoneycombChartPr
   const { positions, svgW, svgH } = useMemo(() => {
     const n = cells.length;
     if (n === 0) return { positions: [] as { cx: number; cy: number; cell: HoneycombCell }[], svgW: 0, svgH: 0 };
-    const cols = Math.max(1, Math.ceil(Math.sqrt(n * COL_W / ROW_H)));
+
+    // cols based on aspect-ratio of flat-top step sizes
+    const cols = Math.max(1, Math.ceil(Math.sqrt(n * COL_STEP / ROW_STEP)));
     const rows = Math.ceil(n / cols);
-    const w = cols * COL_W + COL_W / 2 + PAD * 2;
-    const h = rows * ROW_H + R / 2 + PAD * 2;
+
+    const w = cols * COL_STEP + HEX_W / 2 + PAD * 2;
+    const h = rows * ROW_STEP + HEX_H / 2 + PAD * 2;
+
     const pos = cells.map((cell, i) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const yOff = col % 2 === 1 ? ROW_H / 2 : 0;
+      // Odd columns offset downward by half row step
+      const yOff = col % 2 === 1 ? ROW_STEP / 2 : 0;
       return {
-        cx: PAD + col * COL_W + COL_W / 2,
-        cy: PAD + row * ROW_H + R + yOff,
+        cx: PAD + col * COL_STEP + R,
+        cy: PAD + row * ROW_STEP + HEX_H / 2 + yOff,
         cell,
       };
     });
+
     return { positions: pos, svgW: w, svgH: h };
   }, [cells]);
 
@@ -76,11 +204,11 @@ export const HoneycombChart = ({ cells, selectedCi, onSelect }: HoneycombChartPr
 
   const moveTip = useCallback((cell: HoneycombCell, e: React.MouseEvent) => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
-    setTooltip((prev) => prev && prev.cell.ci === cell.ci ? { cell, x: e.clientX, y: e.clientY } : prev);
+    setTooltip({ cell, x: e.clientX, y: e.clientY });
   }, []);
 
   const hideTip = useCallback(() => {
-    hideTimer.current = setTimeout(() => setTooltip(null), 60);
+    hideTimer.current = setTimeout(() => setTooltip(null), 80);
   }, []);
 
   const handleClick = useCallback((ci: string) => {
@@ -88,6 +216,9 @@ export const HoneycombChart = ({ cells, selectedCi, onSelect }: HoneycombChartPr
   }, [selectedCi, onSelect]);
 
   if (cells.length === 0) return null;
+
+  // Safe viewport check
+  const tooltipRight = tooltip ? tooltip.x + 260 > window.innerWidth : false;
 
   return (
     <>
@@ -97,11 +228,30 @@ export const HoneycombChart = ({ cells, selectedCi, onSelect }: HoneycombChartPr
           height={svgH}
           style={{ display: "block", margin: "0 auto" }}
         >
+          <defs>
+            <filter id="hc-glow" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
           {positions.map(({ cx, cy, cell }) => {
             const isSelected = selectedCi != null && selectedCi === cell.ci;
             const isDimmed = selectedCi != null && !isSelected;
-            const { fill, stroke, strokeW } = severityColor(cell.problemCount);
-            const label = cell.ci.length > 9 ? cell.ci.slice(0, 8) + "…" : cell.ci;
+            const n = cell.problemCount;
+            const hasProblem = n > 0;
+            const isCritical = n >= 5;
+            const fill = sevFill(n);
+            const highlight = sevHighlight(n);
+            const stroke = isSelected ? "#fff" : hasProblem ? "rgba(255,255,255,0.15)" : "rgba(180,180,200,0.18)";
+            const strokeW = isSelected ? 2.5 : 1;
+
+            // Shortened CI label
+            const ciShort = cell.ci.length > 8 ? cell.ci.slice(0, 7) + "…" : cell.ci;
+
             return (
               <g
                 key={cell.ci}
@@ -110,42 +260,87 @@ export const HoneycombChart = ({ cells, selectedCi, onSelect }: HoneycombChartPr
                 onMouseMove={(e) => moveTip(cell, e)}
                 onMouseLeave={hideTip}
                 style={{ cursor: "pointer" }}
-                opacity={isDimmed ? 0.28 : 1}
+                opacity={isDimmed ? 0.22 : 1}
+                filter={isCritical && !isDimmed ? "url(#hc-glow)" : undefined}
               >
+                {/* Shadow hex (slightly larger, darker) for depth */}
+                {hasProblem && (
+                  <polygon
+                    points={hexPoints(cx, cy, R + 1)}
+                    fill="rgba(0,0,0,0.35)"
+                    stroke="none"
+                  />
+                )}
+                {/* Main hex */}
                 <polygon
-                  points={hexPoints(cx, cy, R - 1.5)}
+                  points={hexPoints(cx, cy, R - 1)}
                   fill={fill}
-                  stroke={isSelected ? "#ffffff" : stroke}
-                  strokeWidth={isSelected ? 2.5 : strokeW}
+                  stroke={stroke}
+                  strokeWidth={strokeW}
                 />
-                {cell.problemCount > 0 && (
+                {/* Inner highlight ring (top half glow) */}
+                {hasProblem && (
+                  <polygon
+                    points={hexPoints(cx, cy, R - 3)}
+                    fill="none"
+                    stroke={highlight}
+                    strokeWidth={1}
+                    opacity={0.4}
+                  />
+                )}
+                {hasProblem && (
                   <>
+                    {/* Problem count — large center */}
                     <text
                       x={cx}
-                      y={cy - 4}
+                      y={cy + (cell.revenueAtRisk > 0 ? -3 : 1)}
                       textAnchor="middle"
                       dominantBaseline="middle"
                       fill="#fff"
-                      fontSize={6.5}
-                      fontWeight={500}
-                      style={{ pointerEvents: "none", userSelect: "none", fontFamily: "monospace" }}
-                      opacity={0.85}
-                    >
-                      {label}
-                    </text>
-                    <text
-                      x={cx}
-                      y={cy + 7}
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fill="#fff"
-                      fontSize={11}
-                      fontWeight={700}
+                      fontSize={n >= 10 ? 13 : 16}
+                      fontWeight={800}
                       style={{ pointerEvents: "none", userSelect: "none" }}
                     >
-                      {cell.problemCount}
+                      {n}
                     </text>
+                    {/* CI label — small, below count */}
+                    <text
+                      x={cx}
+                      y={cy + (n >= 10 ? 11 : 13)}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill="rgba(255,255,255,0.7)"
+                      fontSize={6.5}
+                      fontWeight={600}
+                      style={{ pointerEvents: "none", userSelect: "none", fontFamily: "monospace" }}
+                    >
+                      {ciShort}
+                    </text>
+                    {/* Revenue indicator dot */}
+                    {cell.revenueAtRisk > 0 && (
+                      <text
+                        x={cx}
+                        y={cy - 12}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill="rgba(255,220,160,0.75)"
+                        fontSize={8}
+                        style={{ pointerEvents: "none", userSelect: "none" }}
+                      >
+                        $
+                      </text>
+                    )}
                   </>
+                )}
+                {/* Selected ring */}
+                {isSelected && (
+                  <polygon
+                    points={hexPoints(cx, cy, R + 3)}
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                    opacity={0.7}
+                  />
                 )}
               </g>
             );
@@ -158,45 +353,12 @@ export const HoneycombChart = ({ cells, selectedCi, onSelect }: HoneycombChartPr
           style={{
             position: "fixed",
             top: tooltip.y - 10,
-            left: tooltip.x + 14,
+            left: tooltipRight ? tooltip.x - 244 : tooltip.x + 14,
             transform: "translateY(-100%)",
-            background: "rgba(18, 20, 28, 0.97)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 8,
-            padding: "10px 14px",
             zIndex: 9999,
-            pointerEvents: "none",
-            minWidth: 200,
-            boxShadow: "0 6px 24px rgba(0,0,0,0.55)",
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 2, fontFamily: "monospace" }}>
-            {tooltip.cell.ci}
-          </div>
-          {tooltip.cell.appName && (
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginBottom: 8 }}>
-              {tooltip.cell.appName}
-            </div>
-          )}
-          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", rowGap: 4, columnGap: 12, fontSize: 11 }}>
-            {tooltip.cell.tier && (
-              <>
-                <span style={{ color: "rgba(255,255,255,0.45)" }}>Tier</span>
-                <span style={{ color: "#fff" }}>{tooltip.cell.tier}</span>
-              </>
-            )}
-            <span style={{ color: "rgba(255,255,255,0.45)" }}>Active Problems</span>
-            <span style={{
-              fontWeight: 700,
-              color: tooltip.cell.problemCount >= 5 ? "#ff6b7a" : tooltip.cell.problemCount > 0 ? "#FEAA2F" : "rgba(255,255,255,0.4)",
-            }}>
-              {tooltip.cell.problemCount}
-            </span>
-            <span style={{ color: "rgba(255,255,255,0.45)" }}>Rev. at Risk</span>
-            <span style={{ color: tooltip.cell.revenueAtRisk > 0 ? "#ff6b7a" : "rgba(255,255,255,0.4)" }}>
-              {tooltip.cell.revenueAtRisk > 0 ? formatUsd(tooltip.cell.revenueAtRisk) : "—"}
-            </span>
-          </div>
+          <HexTooltip cell={tooltip.cell} />
         </div>,
         document.body,
       )}
