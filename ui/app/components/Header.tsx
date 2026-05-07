@@ -10,8 +10,8 @@ export const Header = () => {
         <AppHeader.NavigationItem as={Link} to="/">
           Crosscheck
         </AppHeader.NavigationItem>
-        <AppHeader.NavigationItem as={Link} to="/saved-pivots">
-          Saved Pivots
+        <AppHeader.NavigationItem as={Link} to="/live">
+          Live Mode
         </AppHeader.NavigationItem>
       </AppHeader.Navigation>
     </AppHeader>

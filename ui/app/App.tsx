@@ -4,6 +4,7 @@ import { Route, Routes } from "react-router-dom";
 import { SavedPivots } from "./pages/SavedPivots";
 import { Header } from "./components/Header";
 import { Home } from "./pages/Home";
+import { LiveMode } from "./pages/LiveMode";
 import { CrosscheckProvider } from "./context/CrosscheckContext";
 
 export const App = () => {
@@ -16,6 +17,7 @@ export const App = () => {
         <Page.Main>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/live" element={<LiveMode />} />
             <Route path="/saved-pivots" element={<SavedPivots />} />
           </Routes>
         </Page.Main>
