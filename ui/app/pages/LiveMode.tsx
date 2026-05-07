@@ -295,11 +295,13 @@ const LiveProblemSheet = ({
   problem,
   appName,
   tier,
+  director,
   onDismiss,
 }: {
   problem: LiveProblemRow | null;
   appName: string;
   tier: string;
+  director: string;
   onDismiss: () => void;
 }) => {
   if (!problem) return null;
@@ -424,9 +426,15 @@ const LiveProblemSheet = ({
                   <Text textStyle="small">{tier}</Text>
                 </>
               )}
+              {director && (
+                <>
+                  <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, opacity: 0.55 }}>App Owner</Text>
+                  <Text textStyle="small">{director}</Text>
+                </>
+              )}
               {problem.rootCause && (
                 <>
-                  <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, opacity: 0.55 }}>Root Cause</Text>
+                  <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, opacity: 0.55 }}>Root Cause Entity</Text>
                   <Text textStyle="small">{problem.rootCause}</Text>
                 </>
               )}
@@ -496,9 +504,13 @@ export const LiveMode = () => {
 
   // Build CI lookup from application list
   const ciMap = useMemo(() => {
-    const m = new Map<string, { appName: string; tier: string }>();
+    const m = new Map<string, { appName: string; tier: string; director: string }>();
     for (const r of applicationList) {
-      m.set(r.AppCI.toUpperCase(), { appName: r.ApplicationName ?? "", tier: r.Tier ?? "" });
+      m.set(r.AppCI.toUpperCase(), {
+        appName: r.ApplicationName ?? "",
+        tier: r.Tier ?? "",
+        director: r.Director ?? "",
+      });
     }
     return m;
   }, [applicationList]);
@@ -614,10 +626,65 @@ export const LiveMode = () => {
       ),
     },
     {
+      id: "appName",
+      header: "App Name",
+      accessor: "singleAppCI",
+      width: { type: "auto", maxWidth: 220 },
+      cell: ({ rowData }) => {
+        const name = ciMap.get(rowData.singleAppCI)?.appName ?? "";
+        return (
+          <Text
+            textStyle="small"
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              opacity: name ? 1 : 0.35,
+            }}
+          >
+            {name || "—"}
+          </Text>
+        );
+      },
+    },
+    {
+      id: "owner",
+      header: "App Owner",
+      accessor: "singleAppCI",
+      width: 150,
+      cell: ({ rowData }) => {
+        const dir = ciMap.get(rowData.singleAppCI)?.director ?? "";
+        return (
+          <Text textStyle="small" style={{ opacity: dir ? 1 : 0.35 }}>
+            {dir || "—"}
+          </Text>
+        );
+      },
+    },
+    {
+      id: "rootCause",
+      header: "Root Cause Entity",
+      accessor: "rootCause",
+      width: { type: "auto", maxWidth: 240 },
+      cell: ({ rowData }) => (
+        <Text
+          textStyle="small"
+          style={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            opacity: rowData.rootCause ? 1 : 0.35,
+          }}
+        >
+          {rowData.rootCause ?? "—"}
+        </Text>
+      ),
+    },
+    {
       id: "title",
       header: "Title",
       accessor: "title",
-      width: { type: "auto", maxWidth: 380 },
+      width: { type: "auto", maxWidth: 360 },
       cell: ({ rowData }) => (
         <button
           onClick={() => setDetailProblem(rowData)}
@@ -630,7 +697,7 @@ export const LiveMode = () => {
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            maxWidth: 380,
+            maxWidth: 360,
             display: "block",
             fontSize: 12,
             color: Colors.Text.Neutral.Default,
@@ -695,12 +762,12 @@ export const LiveMode = () => {
         );
       },
     },
-  ], []);
+  ], [ciMap]);
 
   // For detail sheet enrichment
   const detailAppInfo = useMemo(() => {
-    if (!detailProblem) return { appName: "", tier: "" };
-    return ciMap.get(detailProblem.singleAppCI) ?? { appName: "", tier: "" };
+    if (!detailProblem) return { appName: "", tier: "", director: "" };
+    return ciMap.get(detailProblem.singleAppCI) ?? { appName: "", tier: "", director: "" };
   }, [detailProblem, ciMap]);
 
   const hasFilters = selectedCi !== null || selectedCategory !== null;
@@ -1085,6 +1152,7 @@ export const LiveMode = () => {
         problem={detailProblem}
         appName={detailAppInfo.appName}
         tier={detailAppInfo.tier}
+        director={detailAppInfo.director}
         onDismiss={() => setDetailProblem(null)}
       />
     </Flex>
