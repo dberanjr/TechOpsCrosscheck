@@ -217,10 +217,10 @@ function AppSelector({ selected, pool, onAdd, onRemove }: AppSelectorProps) {
           borderRadius: 4, padding: '3px 8px',
         }}>
           <div style={{ width: 8, height: 8, borderRadius: 2, background: app.color, flexShrink: 0 }} />
-          <span style={{ fontSize: 10, color: TEXT_PRIMARY, fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 13, color: TEXT_PRIMARY, fontVariantNumeric: 'tabular-nums' }}>
             {app.appci.toUpperCase()}
           </span>
-          <span style={{ fontSize: 9, color: TEXT_MUTED, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, color: TEXT_MUTED, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {app.label}
           </span>
           <button onClick={() => onRemove(app.appci)}
@@ -236,7 +236,7 @@ function AppSelector({ selected, pool, onAdd, onRemove }: AppSelectorProps) {
             onClick={() => setOpen(v => !v)}
             style={{
               background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.15)',
-              borderRadius: 4, color: TEXT_MUTED, fontSize: 10, padding: '4px 10px', cursor: 'pointer',
+              borderRadius: 4, color: TEXT_MUTED, fontSize: 13, padding: '4px 10px', cursor: 'pointer',
             }}
           >
             + Add app
@@ -258,7 +258,7 @@ function AppSelector({ selected, pool, onAdd, onRemove }: AppSelectorProps) {
                 }}
               />
               {poolOptions.length === 0 ? (
-                <div style={{ padding: '10px 12px', fontSize: 10, color: TEXT_HINT }}>No matching apps</div>
+                <div style={{ padding: '10px 12px', fontSize: 13, color: TEXT_HINT }}>No matching apps</div>
               ) : (
                 poolOptions.map((rec) => (
                   <div key={rec.AppCI}
@@ -267,8 +267,8 @@ function AppSelector({ selected, pool, onAdd, onRemove }: AppSelectorProps) {
                     onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <span style={{ fontSize: 10, fontWeight: 500, color: TEXT_PRIMARY }}>{rec.AppCI.toUpperCase()}</span>
-                    <span style={{ fontSize: 9.5, color: TEXT_MUTED, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: TEXT_PRIMARY }}>{rec.AppCI.toUpperCase()}</span>
+                    <span style={{ fontSize: 13, color: TEXT_MUTED, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {rec.ApplicationName}
                     </span>
                   </div>
@@ -311,7 +311,7 @@ function DeltaBar({ deltas, range }: { deltas: AppDelta[]; range: Range }) {
 
   return (
     <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.06)', marginTop: 16, paddingTop: 14 }}>
-      <div style={{ fontSize: 8.5, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.11em', marginBottom: 10 }}>
+      <div style={{ fontSize: 11, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.11em', marginBottom: 10 }}>
         Period change · {rangeLabel} · first 20% of buckets vs last 20%
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -335,26 +335,26 @@ function DeltaBar({ deltas, range }: { deltas: AppDelta[]; range: Range }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 10px', borderRight: '0.5px solid rgba(255,255,255,0.07)' }}>
                 <div style={{ width: 7, height: 7, borderRadius: 1, background: d.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 10, fontWeight: 500, color: TEXT_PRIMARY }}>{d.appci.toUpperCase()}</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: TEXT_PRIMARY }}>{d.appci.toUpperCase()}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '6px 10px', borderRight: '0.5px solid rgba(255,255,255,0.07)' }}>
-                <span style={{ fontSize: 15, fontWeight: 500, color: accentColor, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+                <span style={{ fontSize: 18, fontWeight: 500, color: accentColor, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
                   {arrow} {pctText}
                 </span>
-                {caption && <span style={{ fontSize: 8.5, color: accentColor, opacity: 0.8 }}>{caption}</span>}
+                {caption && <span style={{ fontSize: 11, color: accentColor, opacity: 0.8 }}>{caption}</span>}
               </div>
               <div style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {noData ? (
-                  <span style={{ fontSize: 9.5, color: TEXT_HINT }}>insufficient data</span>
+                  <span style={{ fontSize: 13, color: TEXT_HINT }}>insufficient data</span>
                 ) : (
                   <>
-                    <span style={{ fontSize: 10, color: TEXT_SECONDARY, fontVariantNumeric: 'tabular-nums' }}>{fmtHours(d.mttrThen!)}</span>
-                    <span style={{ fontSize: 9, color: TEXT_HINT }}>then</span>
-                    <span style={{ fontSize: 9.5, color: TEXT_HINT }}>→</span>
-                    <span style={{ fontSize: 10, fontWeight: 500, color: improved ? DT_GREEN : degraded ? DT_RED : TEXT_SECONDARY, fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 13, color: TEXT_SECONDARY, fontVariantNumeric: 'tabular-nums' }}>{fmtHours(d.mttrThen!)}</span>
+                    <span style={{ fontSize: 12, color: TEXT_HINT }}>then</span>
+                    <span style={{ fontSize: 13, color: TEXT_HINT }}>→</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: improved ? DT_GREEN : degraded ? DT_RED : TEXT_SECONDARY, fontVariantNumeric: 'tabular-nums' }}>
                       {fmtHours(d.mttrNow!)}
                     </span>
-                    <span style={{ fontSize: 9, color: TEXT_HINT }}>now</span>
+                    <span style={{ fontSize: 12, color: TEXT_HINT }}>now</span>
                   </>
                 )}
               </div>
@@ -518,7 +518,7 @@ function MttrChart({ apps, range }: MttrChartProps) {
         {isLoading && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(6,13,24,0.7)', zIndex: 10, fontSize: 10, color: TEXT_HINT, letterSpacing: '0.06em',
+            background: 'rgba(6,13,24,0.7)', zIndex: 10, fontSize: 13, color: TEXT_HINT, letterSpacing: '0.06em',
           }}>
             QUERYING DYNATRACE INTELLIGENCE…
           </div>
@@ -529,7 +529,7 @@ function MttrChart({ apps, range }: MttrChartProps) {
             alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>
             <div style={{ fontSize: 11, color: TEXT_MUTED }}>No closed problems found for the selected apps in this time window.</div>
-            <div style={{ fontSize: 9.5, color: TEXT_HINT }}>Try a wider range, or use + Add app to select apps from your CMDB.</div>
+            <div style={{ fontSize: 13, color: TEXT_HINT }}>Try a wider range, or use + Add app to select apps from your CMDB.</div>
           </div>
         )}
         <Line data={chartData} options={options} />
@@ -682,10 +682,10 @@ export function MttrTrend() {
             borderRight: i < arr.length - 1 ? '0.5px solid rgba(255,255,255,0.07)' : 'none',
             display: 'flex', flexDirection: 'column', gap: 2,
           }}>
-            <span style={{ fontSize: 15, fontWeight: 500, color: cell.accent, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 18, fontWeight: 500, color: cell.accent, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
               {cell.value}
             </span>
-            <span style={{ fontSize: 8.5, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span style={{ fontSize: 11, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               {cell.label}
             </span>
           </div>
@@ -696,7 +696,7 @@ export function MttrTrend() {
 
         {/* Tier + Owner filter */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 9, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
             Tier
           </span>
           {(['1', '2', '3', '4'] as const).map(t => (
@@ -708,7 +708,7 @@ export function MttrTrend() {
           {ownerList.length > 0 && (
             <>
               <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)', margin: '0 6px', flexShrink: 0 }} />
-              <span style={{ fontSize: 9, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
                 Director
               </span>
               <select
@@ -740,7 +740,7 @@ export function MttrTrend() {
 
         {/* Leaders / Laggers quick select */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 9, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
             Quick select
           </span>
           <PillBtn
@@ -759,7 +759,7 @@ export function MttrTrend() {
           >
             {rankLoading ? '↓ Laggers …' : '↓ Laggers'}
           </PillBtn>
-          <span style={{ fontSize: 9, color: TEXT_HINT }}>
+          <span style={{ fontSize: 12, color: TEXT_HINT }}>
             · top 5 by MTTR delta · {RANGE_CONFIG[range].label} · {poolCIs.length} apps in pool
           </span>
         </div>
@@ -767,7 +767,7 @@ export function MttrTrend() {
         {/* Range + Apps */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 10, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 9, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0 }}>
               Range
             </span>
             <div style={{ display: 'flex', gap: 4 }}>
@@ -778,7 +778,7 @@ export function MttrTrend() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <span style={{ fontSize: 9, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0, paddingTop: 6 }}>
+            <span style={{ fontSize: 12, color: TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', flexShrink: 0, paddingTop: 6 }}>
               Apps
             </span>
             <AppSelector
@@ -794,10 +794,10 @@ export function MttrTrend() {
         <div style={{ background: '#0C1826', border: '0.5px solid rgba(255,255,255,0.07)', borderRadius: 8, padding: '16px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div>
-              <div style={{ fontSize: 9, fontWeight: 500, color: DT_CYAN, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: DT_CYAN, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
                 MTTR Trend — Zero MTTR Goal Tracker
               </div>
-              <div style={{ fontSize: 9, color: TEXT_HINT, marginTop: 2 }}>
+              <div style={{ fontSize: 12, color: TEXT_HINT, marginTop: 2 }}>
                 Average time-to-resolve · closed problems · log scale · {apps.length} app{apps.length === 1 ? '' : 's'} · {scopeLabel}
               </div>
             </div>
@@ -821,21 +821,21 @@ export function MttrTrend() {
               padding: '4px 10px', background: `${DT_GREEN}0A`,
             }}>
               <div style={{ width: 20, borderBottom: `1.5px dashed ${DT_GREEN}` }} />
-              <span style={{ fontSize: 10, color: DT_GREEN }}>
+              <span style={{ fontSize: 13, color: DT_GREEN }}>
                 Zero MTTR goal: Jan 1, 2027 · {daysRemaining} days remaining
               </span>
             </div>
             <a
               href={`https://ual.apps.dynatrace.com/ui/apps/dynatrace.notebooks?query=${notebookDql}`}
               target="_blank" rel="noreferrer"
-              style={{ fontSize: 9.5, color: DT_BLUE_LIGHT, textDecoration: 'none' }}
+              style={{ fontSize: 13, color: DT_BLUE_LIGHT, textDecoration: 'none' }}
               onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
               onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
             >
               Open in Notebooks →
             </a>
           </div>
-          <div style={{ fontSize: 9.5, color: TEXT_HINT }}>
+          <div style={{ fontSize: 13, color: TEXT_HINT }}>
             Representative averages from UAL production · log scale Y axis · hover any point to see formatted MTTR per app
           </div>
         </div>

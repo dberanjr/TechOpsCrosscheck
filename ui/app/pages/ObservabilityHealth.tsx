@@ -1,5 +1,7 @@
 import React from 'react';
 import { useDql } from '@dynatrace-sdk/react-hooks';
+import { useCrosscheck } from '../context/CrosscheckContext';
+import { effectiveAppCis } from '../lib/aggregate';
 // Colors
 const DT_RED = '#E24B4A';
 const DT_ORANGE = '#E06B00';
@@ -29,70 +31,71 @@ const C = { DT_RED, DT_ORANGE, DT_AMBER, DT_PURPLE, DT_CYAN, DT_GREEN, DT_BLUE, 
 // This matches the working dashboard pattern and excludes defunct CMDB apps.
 // ---------------------------------------------------------------------------
 
-const MASTER_QUERY = `fetch dt.entity.host
-| limit 100000
-| filter lifetime[end] > asTimestamp(now()-24h)
-| filterOut matchesValue(cloudType,"EC2") or matchesValue(cloudType,"AZURE") or isNull(monitoringMode)
-| fieldsAdd applicationci=splitString(arrayRemoveNulls(iCollectArray(if(matchesValue(tags[], "*applicationci*"), lower(tags[]))))[0], ":")[1]
-| filter isNotNull(applicationci) and applicationci != ""
-| fieldsAdd is_fullstack = if(monitoringMode == "FULL_STACK", 1, else: 0)
-| summarize {host_count=count(), fullstack_count=sum(is_fullstack)}, by:{applicationci}
+function buildMasterQuery(appCiFilter: readonly string[]): string {
+  const appList = appCiFilter.length > 0 ? `{${appCiFilter.map(a => `"${a}"`).join(', ')}}` : `{""}`;
+  return `fetch bizevents, from:-24h
+| filter event.type == "workflow.import.servicenow.appci"
+| dedup applicationci
+| fieldsAdd applicationci = lower(toString(applicationci))
+| filter in(applicationci, ${appList})
+| fields applicationci, ciname, tier, app_owner_name
 
-| append [
-  fetch bizevents, from:-24h
-  | filter event.type=="workflow.summary.cloud.aws"
-  | filter contains(type, "ecs") or contains(type, "eks") or contains(type, "lambda") or contains(type, "EC2_INSTANCE") or contains(type, "step")
-  | fieldsAdd applicationci=lower(applicationci)
-  | filter isNotNull(applicationci) and applicationci != ""
-  | fieldsAdd host_count=0, fullstack_count=0
-  | summarize {host_count=sum(host_count), fullstack_count=sum(fullstack_count)}, by:{applicationci}
-]
-
-| dedup applicationci, sort:{fullstack_count desc}
+| lookup [fetch dt.entity.host
+  | limit 100000
+  | filter lifetime[end] > asTimestamp(now()-24h) and isNotNull(monitoringMode)
+  | filterOut matchesValue(cloudType, "EC2") or matchesValue(cloudType, "AZURE")
+  | fieldsAdd appci_tags = iCollectArray(if(matchesPhrase(toString(tags[]), "applicationci:"), splitString(toString(tags[]), ":")[1]))
+  | fieldsAdd appci = coalesce(appci_tags[0], null)
+  | filter isNotNull(appci) and appci != "" and appci != "null"
+  | fieldsAdd appci = lower(toString(appci)), is_fullstack = if(monitoringMode == "FULL_STACK", 1, else: 0)
+  | summarize host_count = count(), fullstack_count = sum(is_fullstack), by: {appci}
+], sourceField: applicationci, lookupField: appci, fields: {host_count, fullstack_count}
 
 | lookup [fetch dt.entity.service
-  | fieldsAdd applicationci=splitString(arrayRemoveNulls(iCollectArray(if(matchesValue(tags[], "*applicationci*"), lower(tags[]))))[0], ":")[1]
-  | filter isNotNull(applicationci) and applicationci != ""
-  | summarize svc_count=count(), by:{applicationci}
-], sourceField:applicationci, lookupField:applicationci, fields:{svc_count}
+  | fieldsAdd appci_tags = iCollectArray(if(matchesPhrase(toString(tags[]), "applicationci:"), splitString(toString(tags[]), ":")[1]))
+  | fieldsAdd appci = coalesce(appci_tags[0], null)
+  | filter isNotNull(appci) and appci != "" and appci != "null"
+  | fieldsAdd appci = lower(toString(appci))
+  | summarize svc_count = count(), by: {appci}
+], sourceField: applicationci, lookupField: appci, fields: {svc_count}
 
-| lookup [fetch logs, from:-24h, scanLimitGBytes:-1, samplingRatio:100
+| lookup [fetch logs, from: -24h, scanLimitGBytes: -1, samplingRatio: 100
   | filter isNotNull(applicationci)
-  | summarize log_count=count(), by:{applicationci=lower(applicationci)}
-], sourceField:applicationci, lookupField:applicationci, fields:{log_count}
+  | summarize log_count = count(), by: {applicationci = lower(toString(applicationci))}
+], sourceField: applicationci, lookupField: applicationci, fields: {log_count}
 
-| lookup [fetch dt.entity.application, from:now()-1000d
-  | fieldsAdd applicationci=splitString(arrayRemoveNulls(iCollectArray(if(matchesValue(tags[], "*applicationci*"), lower(tags[]))))[0], ":")[1]
-  | filter isNotNull(applicationci) and applicationci != ""
-  | fieldsAdd rum_active=if(lifetime[end] > now()-7d, true, else: false)
-  | summarize rum_active=max(rum_active), by:{applicationci}
-], sourceField:applicationci, lookupField:applicationci, fields:{rum_active}
+| lookup [fetch dt.entity.application, from: now()-1000d
+  | fieldsAdd appci_tags = iCollectArray(if(matchesPhrase(toString(tags[]), "applicationci:"), splitString(toString(tags[]), ":")[1]))
+  | fieldsAdd appci = coalesce(appci_tags[0], null)
+  | filter isNotNull(appci) and appci != "" and appci != "null"
+  | fieldsAdd appci = lower(toString(appci)), rum_active = if(lifetime[end] > now() - 7d, true, else: false)
+  | summarize rum_active = max(rum_active), by: {appci}
+], sourceField: applicationci, lookupField: appci, fields: {rum_active}
 
-| lookup [fetch bizevents, from:-24h
-  | filter event.type=="workflow.import.servicenow.appci"
-  | fields applicationci=lower(applicationci), ciname, tier, app_owner_name
-], sourceField:applicationci, lookupField:applicationci, fields:{ciname, tier, app_owner_name}
-
-| lookup [fetch dt.davis.problems, from:-24h
-  | filter event.kind == "DAVIS_PROBLEM" AND dt.davis.is_duplicate == false
+| lookup [fetch dt.davis.problems, from: -24h, scanLimitGBytes: -1
+  | filter event.kind == "DAVIS_PROBLEM" and dt.davis.is_duplicate == false
   | fieldsAdd tags_str = toString(entity_tags)
   | filter matchesPhrase(tags_str, "applicationci:")
   | parse tags_str, """LD 'applicationci:' LD:appci '"' LD"""
   | filter isNotNull(appci) and appci != ""
-  | fieldsAdd appci = lower(appci)
-  | fieldsAdd is_active = if(event.status == "ACTIVE", 1, else: 0)
-  | summarize {active_probs=sum(is_active), probs_24h=count()}, by:{appci}
-], sourceField:applicationci, lookupField:appci, fields:{active_probs, probs_24h}
+  | fieldsAdd appci = lower(toString(appci)), is_active = if(event.status == "ACTIVE", 1, else: 0)
+  | summarize active_probs = sum(is_active), probs_24h = count(), by: {appci}
+], sourceField: applicationci, lookupField: appci, fields: {active_probs, probs_24h}
 
-| lookup [fetch bizevents, from:-72h
+| lookup [fetch bizevents, from: -72h, scanLimitGBytes: -1
   | filter event.type == "workflow.summary.service"
-  | summarize blast=countDistinct(consumer.appci), by:{provider.appci}
-], sourceField:applicationci, lookupField:provider.appci, fields:{blast}
+  | fieldsAdd provider_appci = lower(toString(producer.appci))
+  | filter isNotNull(provider_appci) and provider_appci != ""
+  | summarize blast = countDistinct(toString(consumer.appci)), by: {provider_appci}
+], sourceField: applicationci, lookupField: provider_appci, fields: {blast}
 
-| lookup [fetch bizevents, from:-72h
+| lookup [fetch bizevents, from: -72h, scanLimitGBytes: -1
   | filter event.type == "workflow.summary.service"
-  | summarize deps=countDistinct(provider.appci), by:{consumer.appci}
-], sourceField:applicationci, lookupField:consumer.appci, fields:{deps}`;
+  | fieldsAdd consumer_appci = lower(toString(consumer.appci))
+  | filter isNotNull(consumer_appci) and consumer_appci != ""
+  | summarize deps = countDistinct(toString(producer.appci)), by: {consumer_appci}
+], sourceField: applicationci, lookupField: consumer_appci, fields: {deps}`;
+}
 
 // Orphaned problems (7d) — no applicationci tag — separate query for the orphan card.
 const ORPHAN_QUERY = `fetch dt.davis.problems, from:-7d
@@ -187,7 +190,7 @@ function OrphanedCard({ orphanData, loading }: {
 }) {
   const attrPct = 54.7; // confirmed UAL finding from spec
   const val = (v: number | string) => (
-    <span style={{ fontSize: 20, fontWeight: 600, color: C.TEXT_PRIMARY, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+    <span style={{ fontSize: 24, fontWeight: 600, color: C.TEXT_PRIMARY, fontVariantNumeric: 'tabular-nums' }}>{v}</span>
   );
 
   return (
@@ -200,25 +203,25 @@ function OrphanedCard({ orphanData, loading }: {
       marginBottom: 16,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <span style={{ fontSize: 10, fontWeight: 500, color: C.DT_RED, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: C.DT_RED, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
           Orphaned Problem Attribution
         </span>
-        <span style={{ fontSize: 8.5, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>7-DAY WINDOW</span>
+        <span style={{ fontSize: 11, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>7-DAY WINDOW</span>
       </div>
 
       {/* Attribution bar */}
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: 9, color: C.TEXT_SECONDARY }}>Attributed to appci</span>
-          <span style={{ fontSize: 9, color: C.TEXT_SECONDARY }}>Orphaned (no appci)</span>
+          <span style={{ fontSize: 12, color: C.TEXT_SECONDARY }}>Attributed to appci</span>
+          <span style={{ fontSize: 12, color: C.TEXT_SECONDARY }}>Orphaned (no appci)</span>
         </div>
         <div style={{ height: 8, background: 'rgba(255,255,255,0.07)', borderRadius: 4, overflow: 'hidden', display: 'flex' }}>
           <div style={{ width: `${attrPct}%`, height: '100%', background: C.DT_GREEN, borderRadius: '4px 0 0 4px' }} />
           <div style={{ flex: 1,              height: '100%', background: C.DT_RED,   borderRadius: '0 4px 4px 0' }} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-          <span style={{ fontSize: 9.5, color: C.DT_GREEN, fontWeight: 500 }}>{attrPct}%</span>
-          <span style={{ fontSize: 9.5, color: C.DT_RED,   fontWeight: 500 }}>{(100 - attrPct).toFixed(1)}%</span>
+          <span style={{ fontSize: 13, color: C.DT_GREEN, fontWeight: 500 }}>{attrPct}%</span>
+          <span style={{ fontSize: 13, color: C.DT_RED,   fontWeight: 500 }}>{(100 - attrPct).toFixed(1)}%</span>
         </div>
       </div>
 
@@ -235,12 +238,12 @@ function OrphanedCard({ orphanData, loading }: {
             border: '0.5px solid rgba(255,255,255,0.08)',
           }}>
             {val(s.value)}
-            <div style={{ fontSize: 8.5, color: C.TEXT_HINT, marginTop: 3 }}>{s.label}</div>
+            <div style={{ fontSize: 11, color: C.TEXT_HINT, marginTop: 3 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      <p style={{ fontSize: 9.5, color: C.TEXT_SECONDARY, margin: 0, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 13, color: C.TEXT_SECONDARY, margin: 0, lineHeight: 1.6 }}>
         These problems originate from Extension-monitored entities (IBM MQ, F5 BigIP, SHARES/CICS/IMS mainframes, AWS CloudWatch)
         that have no Smartscape topology edges. Davis AI cannot traverse to them during fault tree analysis — their failures surface
         as unattributed orphan problems with no root cause identification and significantly higher MTTR.
@@ -313,11 +316,11 @@ function ExtCard({ card }: { card: ExtCardData }) {
       background: `${C.DT_BLUE}08`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-        <span style={{ fontSize: 9, color: C.DT_BLUE }}>{card.icon}</span>
-        <span style={{ fontSize: 10, fontWeight: 500, color: C.TEXT_PRIMARY }}>{card.name}</span>
+        <span style={{ fontSize: 12, color: C.DT_BLUE }}>{card.icon}</span>
+        <span style={{ fontSize: 13, fontWeight: 500, color: C.TEXT_PRIMARY }}>{card.name}</span>
         {card.chips.map(c => (
           <span key={c.label} style={{
-            fontSize: 8, padding: '1px 6px', borderRadius: 10,
+            fontSize: 13, padding: '1px 6px', borderRadius: 10,
             background: c.ok ? `${C.DT_GREEN}22` : `${C.DT_RED}22`,
             color: c.ok ? C.DT_GREEN : C.DT_RED,
             border: `0.5px solid ${c.ok ? C.DT_GREEN : C.DT_RED}44`,
@@ -326,7 +329,7 @@ function ExtCard({ card }: { card: ExtCardData }) {
           </span>
         ))}
       </div>
-      <p style={{ fontSize: 9, color: C.TEXT_SECONDARY, margin: 0, lineHeight: 1.6 }}>{card.note}</p>
+      <p style={{ fontSize: 12, color: C.TEXT_SECONDARY, margin: 0, lineHeight: 1.6 }}>{card.note}</p>
     </div>
   );
 }
@@ -357,32 +360,32 @@ function Smartscape2Callout() {
           }}>
             smartscape 2.0
           </span>
-          <span style={{ fontSize: 9.5, color: C.DT_PURPLE, fontWeight: 500 }}>
+          <span style={{ fontSize: 13, color: C.DT_PURPLE, fontWeight: 500 }}>
             Topology injection will resolve orphaned problem attribution
           </span>
         </div>
-        <span style={{ fontSize: 9, color: C.TEXT_HINT }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 12, color: C.TEXT_HINT }}>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
         <div style={{ padding: '12px 16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
-              <div style={{ fontSize: 8.5, color: C.DT_RED, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Current State</div>
-              <p style={{ fontSize: 9.5, color: C.TEXT_SECONDARY, margin: '0 0 6px', lineHeight: 1.65 }}>
+              <div style={{ fontSize: 11, color: C.DT_RED, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Current State</div>
+              <p style={{ fontSize: 13, color: C.TEXT_SECONDARY, margin: '0 0 6px', lineHeight: 1.65 }}>
                 Custom device entities from Extensions have no Smartscape edges. Davis AI's Causal AI cannot
                 traverse to them during fault tree analysis.
               </p>
-              <p style={{ fontSize: 9.5, color: C.TEXT_SECONDARY, margin: 0, lineHeight: 1.65 }}>
+              <p style={{ fontSize: 13, color: C.TEXT_SECONDARY, margin: 0, lineHeight: 1.65 }}>
                 Result: ~32,405 orphaned, unattributed problems per week with no DI root cause identification.
               </p>
             </div>
             <div>
-              <div style={{ fontSize: 8.5, color: C.DT_GREEN, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Future State — Smartscape 2.0</div>
-              <p style={{ fontSize: 9.5, color: C.TEXT_SECONDARY, margin: '0 0 6px', lineHeight: 1.65 }}>
+              <div style={{ fontSize: 11, color: C.DT_GREEN, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Future State — Smartscape 2.0</div>
+              <p style={{ fontSize: 13, color: C.TEXT_SECONDARY, margin: '0 0 6px', lineHeight: 1.65 }}>
                 Extension Framework 2.0 supports explicit relationship injection. Developers declare typed topology edges
-                (e.g., <code style={{ fontSize: 9, color: C.DT_CYAN }}>ibm-mq-queue-manager → calls → service</code>).
+                (e.g., <code style={{ fontSize: 12, color: C.DT_CYAN }}>ibm-mq-queue-manager → calls → service</code>).
               </p>
-              <ul style={{ fontSize: 9.5, color: C.TEXT_SECONDARY, margin: '0 0 6px', paddingLeft: 16, lineHeight: 1.65 }}>
+              <ul style={{ fontSize: 13, color: C.TEXT_SECONDARY, margin: '0 0 6px', paddingLeft: 16, lineHeight: 1.65 }}>
                 <li>Davis AI includes Extension entities in fault tree analysis</li>
                 <li>F5 BigIP pool failure = one attributed problem, not 40 orphaned alerts</li>
                 <li>32,405 orphaned problems per week collapses toward true causal roots</li>
@@ -392,7 +395,7 @@ function Smartscape2Callout() {
           <div style={{
             marginTop: 10, padding: '6px 10px',
             background: `${C.DT_PURPLE}12`, border: `0.5px solid ${C.DT_PURPLE}30`, borderRadius: 3,
-            fontSize: 9, color: C.TEXT_SECONDARY,
+            fontSize: 12, color: C.TEXT_SECONDARY,
           }}>
             <strong style={{ color: C.DT_PURPLE }}>Action:</strong> Evaluate IBM MQ, F5, and mainframe Extensions for EF 2.0 upgrade.
             Request Smartscape relationship injection support from Dynatrace product team.
@@ -441,7 +444,7 @@ function TierBadge({ tier }: { tier: HealthRow['tier'] }) {
   const c = tier ? (colors[tier] ?? C.TEXT_HINT) : C.TEXT_HINT;
   return (
     <span style={{
-      fontSize: 8, padding: '1px 5px', borderRadius: 3,
+      fontSize: 13, padding: '1px 5px', borderRadius: 3,
       background: `${c}22`, color: c, border: `0.5px solid ${c}44`,
       fontWeight: 600,
     }}>
@@ -526,7 +529,7 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
   };
 
   const thStyle: React.CSSProperties = {
-    padding: '6px 8px', fontSize: 8.5, color: C.TEXT_HINT,
+    padding: '6px 8px', fontSize: 11, color: C.TEXT_HINT,
     textTransform: 'uppercase', letterSpacing: '0.08em',
     background: 'rgba(255,255,255,0.04)', cursor: 'pointer', userSelect: 'none',
     whiteSpace: 'nowrap', borderBottom: '0.5px solid rgba(255,255,255,0.08)',
@@ -545,7 +548,7 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
                 background: quickFilter === qf.key ? `${C.DT_BLUE_LIGHT}22` : 'transparent',
                 border: `0.5px solid ${quickFilter === qf.key ? C.DT_BLUE_LIGHT : 'rgba(255,255,255,0.12)'}`,
                 borderRadius: 4, color: quickFilter === qf.key ? C.DT_BLUE_LIGHT : C.TEXT_MUTED,
-                fontSize: 10, padding: '3px 9px', cursor: 'pointer', fontWeight: quickFilter === qf.key ? 500 : 400,
+                fontSize: 13, padding: '3px 9px', cursor: 'pointer', fontWeight: quickFilter === qf.key ? 500 : 400,
               }}
             >
               {qf.label}
@@ -563,7 +566,7 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
             fontSize: 11, padding: '3px 8px', outline: 'none', width: 200,
           }}
         />
-        <span style={{ marginLeft: 'auto', fontSize: 9, color: C.TEXT_HINT }}>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: C.TEXT_HINT }}>
           <span style={{ color: C.TEXT_SECONDARY, fontWeight: 500 }}>{sorted.length}</span> apps
         </span>
       </div>
@@ -581,7 +584,7 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
                   background: active ? `${t.accent}22` : 'transparent',
                   border: `0.5px solid ${active ? t.accent : 'rgba(255,255,255,0.12)'}`,
                   borderRadius: 4, color: active ? t.accent : C.TEXT_MUTED,
-                  fontSize: 10, padding: '3px 9px', cursor: 'pointer', fontWeight: active ? 600 : 400,
+                  fontSize: 13, padding: '3px 9px', cursor: 'pointer', fontWeight: active ? 600 : 400,
                 }}
               >
                 {t.label}
@@ -592,7 +595,7 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
 
         {/* Director / owner dropdown */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Director:</span>
+          <span style={{ fontSize: 12, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Director:</span>
           <select value={ownerFilter} onChange={e => { setOwnerF(e.target.value); setPage(1); }} style={selectStyle}>
             <option value="">All</option>
             {ownerList.map(o => <option key={o} value={o}>{o}</option>)}
@@ -625,11 +628,11 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={COL_HEADERS.length} style={{ textAlign: 'center', padding: 40, fontSize: 9.5, color: C.TEXT_HINT, letterSpacing: '0.06em' }}>
+              <tr><td colSpan={COL_HEADERS.length} style={{ textAlign: 'center', padding: 40, fontSize: 13, color: C.TEXT_HINT, letterSpacing: '0.06em' }}>
                 QUERYING DYNATRACE…
               </td></tr>
             ) : pageRows.length === 0 ? (
-              <tr><td colSpan={COL_HEADERS.length} style={{ textAlign: 'center', padding: 40, fontSize: 9.5, color: C.TEXT_HINT }}>
+              <tr><td colSpan={COL_HEADERS.length} style={{ textAlign: 'center', padding: 40, fontSize: 13, color: C.TEXT_HINT }}>
                 No apps match the current filter
               </td></tr>
             ) : pageRows.map((row, i) => {
@@ -645,10 +648,10 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
                   onMouseEnter={e => (e.currentTarget.style.background = C.BG_ROW_HOVER)}
                   onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent')}
                 >
-                  <td style={{ padding: '5px 8px', fontSize: 9.5, color: C.TEXT_PRIMARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</td>
-                  <td style={{ padding: '5px 8px', fontSize: 9, color: C.DT_BLUE_LIGHT, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.appci.toUpperCase()}</td>
+                  <td style={{ padding: '5px 8px', fontSize: 13, color: C.TEXT_PRIMARY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</td>
+                  <td style={{ padding: '5px 8px', fontSize: 12, color: C.DT_BLUE_LIGHT, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.appci.toUpperCase()}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}><TierBadge tier={row.tier} /></td>
-                  <td style={{ padding: '5px 8px', fontSize: 9, color: C.TEXT_MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.owner || '–'}</td>
+                  <td style={{ padding: '5px 8px', fontSize: 12, color: C.TEXT_MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.owner || '–'}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}><Check ok={row.hasAgent} /></td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}><Check ok={row.fullStack} na={!row.hasAgent} /></td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}><Check ok={row.hasTraces} /></td>
@@ -656,22 +659,22 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}><Check ok={row.hasRum} /></td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
-                      <span style={{ fontSize: 10, fontWeight: 500, color: obsColor(row.obsScore), minWidth: 24, textAlign: 'right' }}>{row.obsScore}</span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: obsColor(row.obsScore), minWidth: 24, textAlign: 'right' }}>{row.obsScore}</span>
                       <div style={{ width: 24, height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2 }}>
                         <div style={{ width: `${row.obsScore}%`, height: '100%', background: obsColor(row.obsScore), borderRadius: 2 }} />
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: 10, fontWeight: row.activeProbs > 0 ? 600 : 400, color: row.activeProbs > 0 ? C.DT_RED : C.TEXT_MUTED }}>
+                  <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: 13, fontWeight: row.activeProbs > 0 ? 600 : 400, color: row.activeProbs > 0 ? C.DT_RED : C.TEXT_MUTED }}>
                     {row.activeProbs > 0 ? row.activeProbs : '–'}
                   </td>
-                  <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: 10, color: row.blast > 30 ? C.DT_RED : row.blast > 10 ? C.DT_AMBER : C.TEXT_SECONDARY }}>
+                  <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: 13, color: row.blast > 30 ? C.DT_RED : row.blast > 10 ? C.DT_AMBER : C.TEXT_SECONDARY }}>
                     {row.blast > 0 ? row.blast : '–'}
                   </td>
-                  <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: 10, color: C.TEXT_SECONDARY }}>{row.deps > 0 ? row.deps : '–'}</td>
+                  <td style={{ padding: '5px 8px', textAlign: 'center', fontSize: 13, color: C.TEXT_SECONDARY }}>{row.deps > 0 ? row.deps : '–'}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}>
                     <span style={{
-                      fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 3,
+                      fontSize: 12, fontWeight: 600, padding: '1px 6px', borderRadius: 3,
                       background: row.priority > 30 ? `${C.DT_RED}22` : row.priority > 15 ? `${C.DT_AMBER}22` : 'rgba(255,255,255,0.05)',
                       color: row.priority > 30 ? C.DT_RED : row.priority > 15 ? C.DT_AMBER : C.TEXT_MUTED,
                     }}>
@@ -693,12 +696,12 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
             onClick={() => setPage(p => p - 1)}
             style={{
               background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 3,
-              color: page === 1 ? C.TEXT_HINT : C.TEXT_SECONDARY, fontSize: 10, padding: '3px 10px', cursor: page === 1 ? 'default' : 'pointer',
+              color: page === 1 ? C.TEXT_HINT : C.TEXT_SECONDARY, fontSize: 13, padding: '3px 10px', cursor: page === 1 ? 'default' : 'pointer',
             }}
           >
             ← Prev
           </button>
-          <span style={{ fontSize: 9.5, color: C.TEXT_HINT }}>
+          <span style={{ fontSize: 13, color: C.TEXT_HINT }}>
             Page <span style={{ color: C.TEXT_SECONDARY }}>{page}</span> of {totalPages}
             {' · '}<span style={{ color: C.TEXT_SECONDARY }}>{sorted.length}</span> apps
           </span>
@@ -707,7 +710,7 @@ function CoverageTable({ rows, loading }: { rows: HealthRow[]; loading: boolean 
             onClick={() => setPage(p => p + 1)}
             style={{
               background: 'transparent', border: '0.5px solid rgba(255,255,255,0.15)', borderRadius: 3,
-              color: page === totalPages ? C.TEXT_HINT : C.TEXT_SECONDARY, fontSize: 10, padding: '3px 10px', cursor: page === totalPages ? 'default' : 'pointer',
+              color: page === totalPages ? C.TEXT_HINT : C.TEXT_SECONDARY, fontSize: 13, padding: '3px 10px', cursor: page === totalPages ? 'default' : 'pointer',
             }}
           >
             Next →
@@ -741,25 +744,25 @@ function OwnerChart({ rows }: { rows: HealthRow[] }) {
 
   return (
     <div style={{ marginTop: 28 }}>
-      <div style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
         Owner Accountability — Dark T1 Apps
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {chartData.map(([owner, { dark, total }]) => (
           <div key={owner} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 9, color: C.TEXT_SECONDARY, minWidth: 160, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: C.TEXT_SECONDARY, minWidth: 160, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0 }}>
               {owner}
             </span>
             <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ width: `${clamp(dark / maxDark * 100, 0, 100)}%`, height: '100%', background: C.DT_ORANGE, borderRadius: 4, transition: 'width 0.4s ease' }} />
             </div>
-            <span style={{ fontSize: 9, color: C.DT_ORANGE, minWidth: 40, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 12, color: C.DT_ORANGE, minWidth: 40, fontVariantNumeric: 'tabular-nums' }}>
               {dark} / {total}
             </span>
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 8.5, color: C.TEXT_HINT, marginTop: 6 }}>Dark (0 signals) / T1 total per owner</div>
+      <div style={{ fontSize: 11, color: C.TEXT_HINT, marginTop: 6 }}>Dark (0 signals) / T1 total per owner</div>
     </div>
   );
 }
@@ -804,7 +807,7 @@ const ROADMAP_COLS = [
 function InstrumentRoadmap() {
   return (
     <div style={{ marginTop: 28 }}>
-      <div style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
         Instrumentation Roadmap
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
@@ -815,18 +818,18 @@ function InstrumentRoadmap() {
             borderRadius: 4, padding: '12px 14px',
             background: `${col.accent}06`,
           }}>
-            <div style={{ fontSize: 9, color: col.accent, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, fontWeight: 500 }}>
+            <div style={{ fontSize: 12, color: col.accent, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, fontWeight: 500 }}>
               {col.header}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
               {col.items.map(item => (
                 <div key={item.appci}>
-                  <div style={{ fontSize: 9.5, color: C.TEXT_PRIMARY, fontWeight: 500, marginBottom: 2 }}>{item.appci}</div>
-                  <div style={{ fontSize: 8.5, color: C.TEXT_SECONDARY, lineHeight: 1.5 }}>{item.note}</div>
+                  <div style={{ fontSize: 13, color: C.TEXT_PRIMARY, fontWeight: 500, marginBottom: 2 }}>{item.appci}</div>
+                  <div style={{ fontSize: 11, color: C.TEXT_SECONDARY, lineHeight: 1.5 }}>{item.note}</div>
                 </div>
               ))}
             </div>
-            <div style={{ fontSize: 8.5, color: C.TEXT_HINT, borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 8, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 11, color: C.TEXT_HINT, borderTop: '0.5px solid rgba(255,255,255,0.06)', paddingTop: 8, lineHeight: 1.5 }}>
               {col.footer}
             </div>
           </div>
@@ -874,7 +877,7 @@ function PortfolioInsightTile({ rows }: { rows: HealthRow[] }) {
 
   return (
     <div style={{ marginTop: 28 }}>
-      <div style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>
         Portfolio Observability Breakdown
       </div>
 
@@ -891,8 +894,8 @@ function PortfolioInsightTile({ rows }: { rows: HealthRow[] }) {
             border: `0.5px solid rgba(255,255,255,0.08)`, borderTop: `2px solid ${s.accent}`,
           }}>
             <div style={{ fontSize: 24, fontWeight: 600, color: s.accent, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{s.value}</div>
-            <div style={{ fontSize: 8.5, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 4 }}>{s.label}</div>
-            <div style={{ fontSize: 9, color: C.TEXT_SECONDARY, marginTop: 2 }}>{s.sub}</div>
+            <div style={{ fontSize: 11, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 12, color: C.TEXT_SECONDARY, marginTop: 2 }}>{s.sub}</div>
           </div>
         ))}
       </div>
@@ -901,15 +904,15 @@ function PortfolioInsightTile({ rows }: { rows: HealthRow[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {/* Signal bars */}
         <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '14px 16px', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>Signal Coverage</div>
+          <div style={{ fontSize: 12, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>Signal Coverage</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
             {signalBars.map(s => {
               const p = pct(s.count);
               return (
                 <div key={s.label}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                    <span style={{ fontSize: 9.5, color: C.TEXT_SECONDARY }}>{s.label}</span>
-                    <span style={{ fontSize: 9.5, fontVariantNumeric: 'tabular-nums' }}>
+                    <span style={{ fontSize: 13, color: C.TEXT_SECONDARY }}>{s.label}</span>
+                    <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
                       <span style={{ color: s.color }}>{s.count}</span>
                       <span style={{ color: C.TEXT_HINT }}> ({p}%)</span>
                     </span>
@@ -925,13 +928,13 @@ function PortfolioInsightTile({ rows }: { rows: HealthRow[] }) {
 
         {/* Tier breakdown */}
         <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '14px 16px', border: '0.5px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>Tier Breakdown</div>
+          <div style={{ fontSize: 12, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>Tier Breakdown</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
                 {['Tier', 'Apps', 'Covered', 'Dark', 'Avg Score'].map(h => (
                   <th key={h} style={{
-                    fontSize: 8, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.08em',
+                    fontSize: 13, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.08em',
                     textAlign: h === 'Tier' ? 'left' : 'right', paddingBottom: 7, fontWeight: 400,
                   }}>
                     {h}
@@ -943,16 +946,16 @@ function PortfolioInsightTile({ rows }: { rows: HealthRow[] }) {
               {tierStats.map(ts => (
                 <tr key={ts.tier} style={{ borderTop: '0.5px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '5px 0' }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 600, color: tierAccents[ts.tier] }}>T{ts.tier}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: tierAccents[ts.tier] }}>T{ts.tier}</span>
                   </td>
-                  <td style={{ padding: '5px 0', fontSize: 9.5, color: C.TEXT_PRIMARY, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{ts.count}</td>
+                  <td style={{ padding: '5px 0', fontSize: 13, color: C.TEXT_PRIMARY, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{ts.count}</td>
                   <td style={{ padding: '5px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                    <span style={{ fontSize: 9.5, color: C.DT_GREEN }}>{ts.covered}</span>
-                    <span style={{ fontSize: 8.5, color: C.TEXT_HINT }}> ({ts.covPct}%)</span>
+                    <span style={{ fontSize: 13, color: C.DT_GREEN }}>{ts.covered}</span>
+                    <span style={{ fontSize: 11, color: C.TEXT_HINT }}> ({ts.covPct}%)</span>
                   </td>
-                  <td style={{ padding: '5px 0', fontSize: 9.5, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: ts.dark > 0 ? C.DT_RED : C.TEXT_MUTED }}>{ts.dark}</td>
+                  <td style={{ padding: '5px 0', fontSize: 13, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: ts.dark > 0 ? C.DT_RED : C.TEXT_MUTED }}>{ts.dark}</td>
                   <td style={{ padding: '5px 0', textAlign: 'right' }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 500, color: obsColor(ts.avgScore), fontVariantNumeric: 'tabular-nums' }}>{ts.avgScore}</span>
+                    <span style={{ fontSize: 13, fontWeight: 500, color: obsColor(ts.avgScore), fontVariantNumeric: 'tabular-nums' }}>{ts.avgScore}</span>
                   </td>
                 </tr>
               ))}
@@ -969,9 +972,27 @@ function PortfolioInsightTile({ rows }: { rows: HealthRow[] }) {
 // ---------------------------------------------------------------------------
 
 export function ObservabilityHealth() {
-  // Single master query — entity-first, all signals joined server-side.
+  const {
+    applicationList,
+    appCiFilter,
+    tierFilter,
+    directorFilter,
+  } = useCrosscheck();
+
+  // Resolve the effective AppCI list — respects source (central or uploaded) and filters.
+  const effective = React.useMemo(
+    () => effectiveAppCis(applicationList, tierFilter, directorFilter, appCiFilter),
+    [applicationList, tierFilter, directorFilter, appCiFilter],
+  );
+
+  const masterQueryString = React.useMemo(
+    () => buildMasterQuery(effective),
+    [effective],
+  );
+
+  // Queries are disabled if no apps are selected.
   const { data: masterData, isLoading: masterLoading } = useDql(
-    { query: MASTER_QUERY, maxResultRecords: 100000, defaultScanLimitGbytes: -1 },
+    { query: masterQueryString, maxResultRecords: 100000, defaultScanLimitGbytes: -1 },
     { staleTime: 0 },
   );
   const { data: orphanData, isLoading: orphanLoading } = useDql(
@@ -1056,10 +1077,10 @@ export function ObservabilityHealth() {
             borderRight: i < STAT_CELLS.length - 1 ? '0.5px solid rgba(255,255,255,0.07)' : 'none',
             display: 'flex', flexDirection: 'column', gap: 2,
           }}>
-            <span style={{ fontSize: 15, fontWeight: 500, color: cell.accent, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 18, fontWeight: 500, color: cell.accent, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
               {cell.value}
             </span>
-            <span style={{ fontSize: 8.5, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span style={{ fontSize: 11, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               {cell.label}
             </span>
           </div>
@@ -1069,28 +1090,12 @@ export function ObservabilityHealth() {
       {/* Body */}
       <div style={{ padding: '20px 24px' }}>
 
-        {/* Orphaned card */}
-        <OrphanedCard orphanData={orphanStats} loading={orphanLoading} />
-
-        {/* Extension Infrastructure */}
-        <div style={{ marginBottom: 4 }}>
-          <div style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
-            Extension Infrastructure — Topology Gap
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {EXT_CARDS.map(card => <ExtCard key={card.name} card={card} />)}
-          </div>
-        </div>
-
-        {/* Smartscape 2.0 */}
-        <Smartscape2Callout />
-
         {/* Coverage Table */}
-        <div style={{ marginTop: 28 }}>
-          <div style={{ fontSize: 9, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+        <div>
+          <div style={{ fontSize: 12, color: C.TEXT_HINT, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
             App Coverage Table
           </div>
-          <div style={{ fontSize: 8.5, color: C.TEXT_HINT, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: C.TEXT_HINT, marginBottom: 8 }}>
             <span style={{ color: C.DT_GREEN, marginRight: 10 }}>■ All signals</span>
             <span style={{ color: C.DT_AMBER, marginRight: 10 }}>■ Gaps — no active problems</span>
             <span style={{ color: C.DT_RED }}>■ Gaps + active problems</span>

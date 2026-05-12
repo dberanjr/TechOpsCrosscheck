@@ -3,14 +3,16 @@
   "environmentUrl": "https://ual.apps.dynatrace.com/",
   "app": {
     "name": "TechOpsCrosscheck",
-    "version": "1.0.50",
+    "version": "1.0.61",
     "description": "Surface regressions. Quantify impact.",
     "id": "my.tech.ops.crosscheck",
     "scopes": [
-      { "name": "storage:events:read", "comment": "dt.davis.problems for the per-CI and tier rollups" },
-      { "name": "storage:bizevents:read", "comment": "ServiceNow u_1_day_total_financial_loss lookup, tenant-wide" },
       { "name": "storage:buckets:read", "comment": "general Grail access" },
       { "name": "storage:entities:read", "comment": "entity tag enrichment for ApplicationCI extraction" },
+      { "name": "storage:events:read", "comment": "dt.davis.problems for the per-CI and tier rollups" },
+      { "name": "storage:logs:read", "comment": "log coverage detection for Obs Health" },
+      { "name": "storage:metrics:read", "comment": "infrastructure and service metrics" },
+      { "name": "storage:bizevents:read", "comment": "ServiceNow CMDB and service dependency workflows" },
       { "name": "storage:files:read", "comment": "Grail file/object store read access" },
       { "name": "state:user-app-states:read", "comment": "saved pivots and uploaded TechOps tables, per-user" },
       { "name": "state:user-app-states:write", "comment": "saved pivots and uploaded TechOps tables, per-user" }
