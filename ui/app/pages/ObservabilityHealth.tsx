@@ -22,6 +22,7 @@ const BG_CARD = '#0E1828';
 const BG_DEEP = '#060D18';
 const BG_ROW_HOVER = 'rgba(255,255,255,0.04)';
 
+const PAGE_BG = '#0A0F1B';
 const C = { DT_RED, DT_ORANGE, DT_AMBER, DT_PURPLE, DT_CYAN, DT_GREEN, DT_BLUE, DT_BLUE_LIGHT, DT_PINK, DT_MAGENTA, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, TEXT_HINT, BG_SHELL, BG_CARD, BG_DEEP, BG_ROW_HOVER };
 
 // ---------------------------------------------------------------------------
@@ -33,68 +34,71 @@ const C = { DT_RED, DT_ORANGE, DT_AMBER, DT_PURPLE, DT_CYAN, DT_GREEN, DT_BLUE, 
 
 function buildMasterQuery(appCiFilter: readonly string[]): string {
   const appList = appCiFilter.length > 0 ? `{${appCiFilter.map(a => `"${a}"`).join(', ')}}` : `{""}`;
-  return `fetch bizevents, from:-24h
-| filter event.type == "workflow.import.servicenow.appci"
-| dedup applicationci
-| fieldsAdd applicationci = lower(toString(applicationci))
-| filter in(applicationci, ${appList})
-| fields applicationci, ciname, tier, app_owner_name
+  return `fetch dt.entity.host
+| limit 100000
+| filter lifetime[end] > asTimestamp(now()-24h)
+| filterOut matchesValue(cloudType,"EC2") or matchesValue(cloudType,"AZURE") or isNull(monitoringMode)
+| fieldsAdd applicationci=splitString(arrayRemoveNulls(iCollectArray(if(matchesValue(tags[], "*applicationci*"), lower(tags[]))))[0], ":")[1]
+| filter isNotNull(applicationci) and applicationci != ""
+| fieldsAdd is_fullstack = if(monitoringMode == "FULL_STACK", 1, else: 0)
+| summarize {host_count=count(), fullstack_count=sum(is_fullstack)}, by:{applicationci}
 
-| lookup [fetch dt.entity.host
-  | limit 100000
-  | filter lifetime[end] > asTimestamp(now()-24h) and isNotNull(monitoringMode)
-  | filterOut matchesValue(cloudType, "EC2") or matchesValue(cloudType, "AZURE")
-  | fieldsAdd appci_tags = iCollectArray(if(matchesPhrase(toString(tags[]), "applicationci:"), splitString(toString(tags[]), ":")[1]))
-  | fieldsAdd appci = coalesce(appci_tags[0], null)
-  | filter isNotNull(appci) and appci != "" and appci != "null"
-  | fieldsAdd appci = lower(toString(appci)), is_fullstack = if(monitoringMode == "FULL_STACK", 1, else: 0)
-  | summarize host_count = count(), fullstack_count = sum(is_fullstack), by: {appci}
-], sourceField: applicationci, lookupField: appci, fields: {host_count, fullstack_count}
+| append [
+  fetch bizevents, from:-24h
+  | filter event.type=="workflow.summary.cloud.aws"
+  | filter contains(type, "ecs") or contains(type, "eks") or contains(type, "lambda") or contains(type, "EC2_INSTANCE") or contains(type, "step")
+  | fieldsAdd applicationci=lower(applicationci)
+  | filter isNotNull(applicationci) and applicationci != ""
+  | fieldsAdd host_count=0, fullstack_count=0
+  | summarize {host_count=sum(host_count), fullstack_count=sum(fullstack_count)}, by:{applicationci}
+]
+
+| dedup applicationci, sort:{fullstack_count desc}
+| filter in(applicationci, ${appList})
 
 | lookup [fetch dt.entity.service
-  | fieldsAdd appci_tags = iCollectArray(if(matchesPhrase(toString(tags[]), "applicationci:"), splitString(toString(tags[]), ":")[1]))
-  | fieldsAdd appci = coalesce(appci_tags[0], null)
-  | filter isNotNull(appci) and appci != "" and appci != "null"
-  | fieldsAdd appci = lower(toString(appci))
-  | summarize svc_count = count(), by: {appci}
-], sourceField: applicationci, lookupField: appci, fields: {svc_count}
+  | fieldsAdd applicationci=splitString(arrayRemoveNulls(iCollectArray(if(matchesValue(tags[], "*applicationci*"), lower(tags[]))))[0], ":")[1]
+  | filter isNotNull(applicationci) and applicationci != ""
+  | summarize svc_count=count(), by:{applicationci}
+], sourceField:applicationci, lookupField:applicationci, fields:{svc_count}
 
-| lookup [fetch logs, from: -24h, scanLimitGBytes: -1, samplingRatio: 100
+| lookup [fetch logs, from:-24h, scanLimitGBytes:-1, samplingRatio:100
   | filter isNotNull(applicationci)
-  | summarize log_count = count(), by: {applicationci = lower(toString(applicationci))}
-], sourceField: applicationci, lookupField: applicationci, fields: {log_count}
+  | summarize log_count=count(), by:{applicationci=lower(applicationci)}
+], sourceField:applicationci, lookupField:applicationci, fields:{log_count}
 
-| lookup [fetch dt.entity.application, from: now()-1000d
-  | fieldsAdd appci_tags = iCollectArray(if(matchesPhrase(toString(tags[]), "applicationci:"), splitString(toString(tags[]), ":")[1]))
-  | fieldsAdd appci = coalesce(appci_tags[0], null)
-  | filter isNotNull(appci) and appci != "" and appci != "null"
-  | fieldsAdd appci = lower(toString(appci)), rum_active = if(lifetime[end] > now() - 7d, true, else: false)
-  | summarize rum_active = max(rum_active), by: {appci}
-], sourceField: applicationci, lookupField: appci, fields: {rum_active}
+| lookup [fetch dt.entity.application, from:now()-1000d
+  | fieldsAdd applicationci=splitString(arrayRemoveNulls(iCollectArray(if(matchesValue(tags[], "*applicationci*"), lower(tags[]))))[0], ":")[1]
+  | filter isNotNull(applicationci) and applicationci != ""
+  | fieldsAdd rum_active=if(lifetime[end] > now()-7d, true, else: false)
+  | summarize rum_active=max(rum_active), by:{applicationci}
+], sourceField:applicationci, lookupField:applicationci, fields:{rum_active}
 
-| lookup [fetch dt.davis.problems, from: -24h
-  | filter event.kind == "DAVIS_PROBLEM" and dt.davis.is_duplicate == false
+| lookup [fetch bizevents, from:-24h
+  | filter event.type=="workflow.import.servicenow.appci"
+  | fields applicationci=lower(applicationci), ciname, tier, app_owner_name
+], sourceField:applicationci, lookupField:applicationci, fields:{ciname, tier, app_owner_name}
+
+| lookup [fetch dt.davis.problems, from:-24h
+  | filter event.kind == "DAVIS_PROBLEM" AND dt.davis.is_duplicate == false
   | fieldsAdd tags_str = toString(entity_tags)
   | filter matchesPhrase(tags_str, "applicationci:")
   | parse tags_str, """LD 'applicationci:' LD:appci '"' LD"""
   | filter isNotNull(appci) and appci != ""
-  | fieldsAdd appci = lower(toString(appci)), is_active = if(event.status == "ACTIVE", 1, else: 0)
-  | summarize active_probs = sum(is_active), probs_24h = count(), by: {appci}
-], sourceField: applicationci, lookupField: appci, fields: {active_probs, probs_24h}
+  | fieldsAdd appci = lower(appci)
+  | fieldsAdd is_active = if(event.status == "ACTIVE", 1, else: 0)
+  | summarize {active_probs=sum(is_active), probs_24h=count()}, by:{appci}
+], sourceField:applicationci, lookupField:appci, fields:{active_probs, probs_24h}
 
-| lookup [fetch bizevents, from: -72h
+| lookup [fetch bizevents, from:-72h
   | filter event.type == "workflow.summary.service"
-  | fieldsAdd provider_appci = lower(toString(producer.appci))
-  | filter isNotNull(provider_appci) and provider_appci != ""
-  | summarize blast = countDistinct(toString(consumer.appci)), by: {provider_appci}
-], sourceField: applicationci, lookupField: provider_appci, fields: {blast}
+  | summarize blast=countDistinct(consumer.appci), by:{provider.appci}
+], sourceField:applicationci, lookupField:provider.appci, fields:{blast}
 
-| lookup [fetch bizevents, from: -72h
+| lookup [fetch bizevents, from:-72h
   | filter event.type == "workflow.summary.service"
-  | fieldsAdd consumer_appci = lower(toString(consumer.appci))
-  | filter isNotNull(consumer_appci) and consumer_appci != ""
-  | summarize deps = countDistinct(toString(producer.appci)), by: {consumer_appci}
-], sourceField: applicationci, lookupField: consumer_appci, fields: {deps}`;
+  | summarize deps=countDistinct(provider.appci), by:{consumer.appci}
+], sourceField:applicationci, lookupField:consumer.appci, fields:{deps}`;
 }
 
 // Orphaned problems (7d) — no applicationci tag — separate query for the orphan card.
@@ -1068,7 +1072,7 @@ export function ObservabilityHealth() {
   ];
 
   return (
-    <div>
+    <div style={{ background: PAGE_BG, minHeight: '100vh' }}>
       {/* Stats bar */}
       <div style={{ background: '#060E1C', display: 'flex', borderBottom: '0.5px solid rgba(255,255,255,0.07)', minHeight: 48 }}>
         {STAT_CELLS.map((cell, i) => (
