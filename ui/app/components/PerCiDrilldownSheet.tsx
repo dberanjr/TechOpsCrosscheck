@@ -15,7 +15,7 @@ import { windowRange } from "../../queries/dqlUtils";
 import type { ProblemScope } from "../../queries/dqlUtils";
 import { PermissionRequired } from "./PermissionRequired";
 import { useCrosscheck } from "../context/CrosscheckContext";
-import { formatDate, formatDateUtc, formatMttr, formatNumber, formatUsd, formatPercent } from "../lib/formatters";
+import { formatDate, formatDateUtc, formatMttr, formatNumber, formatPercent } from "../lib/formatters";
 import { inspectError } from "../lib/permissionError";
 import { classify, NEW_EMERGENCE_SENTINEL } from "../lib/percentChange";
 import { improvementGreen, regressionRed, pivotLineColor } from "../lib/colors";
@@ -169,9 +169,9 @@ const StatCard = ({
 };
 
 const VerdictCard = ({ ciRow }: { ciRow: PerCiRow }) => {
-  const candidates = [ciRow.mttrPctChange, ciRow.countPctChange, ciRow.avgImpactPctChange];
+  const candidates = [ciRow.mttrPctChange, ciRow.countPctChange, ciRow.affectedUsersPctChange];
   const isNew = candidates.some((v) => v === NEW_EMERGENCE_SENTINEL);
-  const primary = ciRow.avgImpactPctChange ?? ciRow.countPctChange ?? ciRow.mttrPctChange;
+  const primary = ciRow.affectedUsersPctChange ?? ciRow.countPctChange ?? ciRow.mttrPctChange;
   let verdict: string;
   let gradientFrom: string;
   let gradientTo: string;
@@ -373,21 +373,6 @@ export const PerCiDrilldownSheet = ({
         },
       },
       {
-        id: "estImpact",
-        header: "Est. revenue impact",
-        accessor: (row: ProblemRow) => row.estImpactAvg ?? 0,
-        width: 150,
-        cell: ({ rowData }) => {
-          const val = rowData.estImpactAvg;
-          const color = val !== null && val > 0 ? regressionRed : undefined;
-          return (
-            <Text textStyle="small" style={color ? { color } : undefined}>
-              {val !== null && val > 0 ? formatUsd(val) : "—"}
-            </Text>
-          );
-        },
-      },
-      {
         id: "users",
         header: "Affected users",
         accessor: (row: ProblemRow) => row.affectedUsers ?? 0,
@@ -456,11 +441,11 @@ export const PerCiDrilldownSheet = ({
             </Flex>
             <Grid gridTemplateColumns="repeat(4, 1fr)" gap={12}>
               <StatCard
-                label="Revenue impact"
-                pre={ciRow.preAvgImpact}
-                post={ciRow.postAvgImpact}
-                pctChange={ciRow.avgImpactPctChange}
-                format={formatUsd}
+                label="Affected Users"
+                pre={ciRow.preAffectedUsers}
+                post={ciRow.postAffectedUsers}
+                pctChange={ciRow.affectedUsersPctChange}
+                format={formatNumber}
               />
               <StatCard
                 label="Avg MTTR"

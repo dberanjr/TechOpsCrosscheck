@@ -10,7 +10,7 @@ import { DivergingBar } from "./DivergingBar";
 import { PermissionRequired } from "./PermissionRequired";
 import { useCrosscheck, type VerdictFilter } from "../context/CrosscheckContext";
 import { classify, NEW_EMERGENCE_SENTINEL } from "../lib/percentChange";
-import { formatPercent, formatUsd, formatMttr, formatNumber } from "../lib/formatters";
+import { formatPercent, formatMttr, formatNumber } from "../lib/formatters";
 import { improvementGreen, regressionRed, pivotLineColor } from "../lib/colors";
 import { inspectError } from "../lib/permissionError";
 
@@ -211,22 +211,22 @@ export const PerCiTable = ({
       },
       {
         id: "impactPct",
-        header: "Impact Δ",
-        accessor: (row: PerCiRow) => row.avgImpactPctChange,
+        header: "Affected Users Δ",
+        accessor: (row: PerCiRow) => row.affectedUsersPctChange,
         width: 200,
         cell: ({ value }) => <PctCell value={typeof value === "number" ? value : null} />,
       },
       {
-        id: "revenueAbs",
-        header: "Revenue impact",
-        accessor: (row: PerCiRow) => row.postAvgImpact ?? 0,
+        id: "affectedUsersAbs",
+        header: "Affected Users pre / post",
+        accessor: (row: PerCiRow) => row.postAffectedUsers ?? 0,
         width: 230,
         cell: ({ rowData }) => (
           <AbsCell
-            pre={rowData.preAvgImpact}
-            post={rowData.postAvgImpact}
-            pctChange={rowData.avgImpactPctChange}
-            format={formatUsd}
+            pre={rowData.preAffectedUsers}
+            post={rowData.postAffectedUsers}
+            pctChange={rowData.affectedUsersPctChange}
+            format={formatNumber}
           />
         ),
       },
