@@ -15,7 +15,12 @@ const TEXT_PRIMARY = '#DCE8F5';
 const TEXT_SECONDARY = '#B0C0D0';
 const TEXT_MUTED = '#7090A8';
 const TEXT_HINT = '#506070';
-const C = { DT_RED, DT_ORANGE, DT_AMBER, DT_PURPLE, DT_CYAN, DT_GREEN, DT_BLUE, DT_BLUE_LIGHT, DT_PINK, DT_MAGENTA, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, TEXT_HINT };
+const BG_SHELL = '#09111E';
+const BG_CARD = '#0E1828';
+const BG_DEEP = '#060D18';
+const BG_ROW_HOVER = 'rgba(255,255,255,0.04)';
+
+const C = { DT_RED, DT_ORANGE, DT_AMBER, DT_PURPLE, DT_CYAN, DT_GREEN, DT_BLUE, DT_BLUE_LIGHT, DT_PINK, DT_MAGENTA, TEXT_PRIMARY, TEXT_SECONDARY, TEXT_MUTED, TEXT_HINT, BG_SHELL, BG_CARD, BG_DEEP, BG_ROW_HOVER };
 
 // ---------------------------------------------------------------------------
 // Single master DQL query — entity-first approach, confirmed via dtctl.

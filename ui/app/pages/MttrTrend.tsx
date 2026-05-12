@@ -539,6 +539,13 @@ function MttrChart({ apps, range }: MttrChartProps) {
   );
 }
 
+const TIER_LABELS: Record<string, string> = {
+  '1': '1 - most critical',
+  '2': '2 - somewhat critical',
+  '3': '3 - less critical',
+  '4': '4 - not critical',
+};
+
 export function MttrTrend() {
   const [range, setRange] = React.useState<Range>('30d');
   const [tier, setTier]   = React.useState<'1' | '2' | '3' | '4'>('1');
@@ -561,7 +568,7 @@ export function MttrTrend() {
   const cmdbLoading = centralStatus === 'loading';
 
   const tierPool = React.useMemo(() =>
-    Array.from(applicationList).filter(r => r.Tier === tier),
+    Array.from(applicationList).filter(r => r.Tier === TIER_LABELS[tier]),
     [applicationList, tier],
   );
 
@@ -581,8 +588,9 @@ export function MttrTrend() {
   }, [tierPool]);
 
   function makeDefaultApps(t: string, o: string | null): AppEntry[] {
+    const tierLabel = TIER_LABELS[t] || t;
     return applicationList
-      .filter(r => r.Tier === t && (!o || r.Director === o))
+      .filter(r => r.Tier === tierLabel && (!o || r.Director === o))
       .slice(0, 6)
       .map((r, i) => ({
         appci: r.AppCI.toLowerCase(),
