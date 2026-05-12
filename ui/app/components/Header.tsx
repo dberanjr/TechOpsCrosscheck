@@ -13,6 +13,12 @@ export const Header = () => {
         <AppHeader.NavigationItem as={Link} to="/live">
           Live Mode
         </AppHeader.NavigationItem>
+        <AppHeader.NavigationItem as={Link} to="/mttr-trend">
+          MTTR Trend
+        </AppHeader.NavigationItem>
+        <AppHeader.NavigationItem as={Link} to="/obs-health">
+          Obs Health
+        </AppHeader.NavigationItem>
       </AppHeader.Navigation>
     </AppHeader>
   );
