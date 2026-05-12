@@ -97,13 +97,17 @@ function buildMasterQuery(appCiFilter: readonly string[]): string {
 
 | lookup [fetch bizevents, from:-72h
   | filter event.type == "workflow.summary.service"
-  | summarize blast=countDistinct(consumer.appci), by:{provider.appci}
-], sourceField:applicationci, lookupField:provider.appci, fields:{blast}
+  | fieldsAdd provider_appci = lower(toString(provider.appci))
+  | filter isNotNull(provider_appci) and provider_appci != ""
+  | summarize blast=countDistinct(lower(toString(consumer.appci))), by:{provider_appci}
+], sourceField:applicationci, lookupField:provider_appci, fields:{blast}
 
 | lookup [fetch bizevents, from:-72h
   | filter event.type == "workflow.summary.service"
-  | summarize deps=countDistinct(provider.appci), by:{consumer.appci}
-], sourceField:applicationci, lookupField:consumer.appci, fields:{deps}`;
+  | fieldsAdd consumer_appci = lower(toString(consumer.appci))
+  | filter isNotNull(consumer_appci) and consumer_appci != ""
+  | summarize deps=countDistinct(lower(toString(provider.appci))), by:{consumer_appci}
+], sourceField:applicationci, lookupField:consumer_appci, fields:{deps}`;
 }
 
 // Orphaned problems (7d) — no applicationci tag — separate query for the orphan card.
