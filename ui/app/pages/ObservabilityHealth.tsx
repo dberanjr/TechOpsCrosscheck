@@ -72,7 +72,7 @@ function buildMasterQuery(appCiFilter: readonly string[]): string {
   | summarize rum_active = max(rum_active), by: {appci}
 ], sourceField: applicationci, lookupField: appci, fields: {rum_active}
 
-| lookup [fetch dt.davis.problems, from: -24h, scanLimitGBytes: -1
+| lookup [fetch dt.davis.problems, from: -24h
   | filter event.kind == "DAVIS_PROBLEM" and dt.davis.is_duplicate == false
   | fieldsAdd tags_str = toString(entity_tags)
   | filter matchesPhrase(tags_str, "applicationci:")
@@ -82,14 +82,14 @@ function buildMasterQuery(appCiFilter: readonly string[]): string {
   | summarize active_probs = sum(is_active), probs_24h = count(), by: {appci}
 ], sourceField: applicationci, lookupField: appci, fields: {active_probs, probs_24h}
 
-| lookup [fetch bizevents, from: -72h, scanLimitGBytes: -1
+| lookup [fetch bizevents, from: -72h
   | filter event.type == "workflow.summary.service"
   | fieldsAdd provider_appci = lower(toString(producer.appci))
   | filter isNotNull(provider_appci) and provider_appci != ""
   | summarize blast = countDistinct(toString(consumer.appci)), by: {provider_appci}
 ], sourceField: applicationci, lookupField: provider_appci, fields: {blast}
 
-| lookup [fetch bizevents, from: -72h, scanLimitGBytes: -1
+| lookup [fetch bizevents, from: -72h
   | filter event.type == "workflow.summary.service"
   | fieldsAdd consumer_appci = lower(toString(consumer.appci))
   | filter isNotNull(consumer_appci) and consumer_appci != ""
