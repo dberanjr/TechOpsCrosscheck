@@ -33,7 +33,12 @@ const C = { DT_RED, DT_ORANGE, DT_AMBER, DT_PURPLE, DT_CYAN, DT_GREEN, DT_BLUE, 
 // ---------------------------------------------------------------------------
 
 function buildMasterQuery(appCiFilter: readonly string[]): string {
-  const appList = appCiFilter.length > 0 ? `{${appCiFilter.map(a => `"${a}"`).join(', ')}}` : `{""}`;
+  // If no apps selected, return empty result
+  if (appCiFilter.length === 0) {
+    return `fetch dt.entity.host | limit 0`;
+  }
+
+  const appList = `{${appCiFilter.map(a => `"${a}"`).join(', ')}}`;
   return `fetch dt.entity.host
 | limit 100000
 | filter lifetime[end] > asTimestamp(now()-24h)
