@@ -7,7 +7,7 @@ export const Header = () => {
     <AppHeader>
       <AppHeader.Navigation>
         <AppHeader.Logo as={Link} to="/" />
-        <AppHeader.NavigationItem as={Link} to="/">
+        <AppHeader.NavigationItem as={Link} to="/crosscheck">
           Crosscheck
         </AppHeader.NavigationItem>
         <AppHeader.NavigationItem as={Link} to="/live">

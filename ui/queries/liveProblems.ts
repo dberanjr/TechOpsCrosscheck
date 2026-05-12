@@ -60,7 +60,7 @@ ${dqlInFilterLine("singleAppCI", appCiFilter)}
                                else: 0)))
     | fields applicationci, minLossDaily, maxLossDaily
   ], sourceField: singleAppCI, lookupField: applicationci, prefix: "loss."
-| fields singleAppCI = upper(singleAppCI), category = event.category, title = event.title,
+| fields singleAppCI = upper(singleAppCI), category = event.category, title = event.name,
          rootCause = root_cause_entity_name, displayId = display_id, eventId = event.id,
          impactLevel = impactLevel, problemStart = timestamp,
          minLossDaily = coalesce(loss.minLossDaily, 0), maxLossDaily = coalesce(loss.maxLossDaily, 0)

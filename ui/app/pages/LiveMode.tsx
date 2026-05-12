@@ -31,6 +31,12 @@ interface CiInfo {
   director: string;
 }
 
+// Pre-enriched row passed to DataTable — plain string fields for reliable column rendering
+interface EnrichedProblemRow extends LiveProblemRow {
+  _appName: string;
+  _director: string;
+}
+
 interface RootCauseEntry {
   name: string;
   count: number;
@@ -827,13 +833,22 @@ export const LiveMode = () => {
   const criticalCount = useMemo(() => problems.filter((p) => p.category === "ERROR").length, [problems]);
   const avgDuration = useMemo(() => problems.length === 0 ? 0 : problems.reduce((s, p) => s + p.durationMs, 0) / problems.length, [problems]);
 
-  // Table columns — function accessors to avoid DataTable deduplication issues
-  const columns = useMemo<DataTableColumnDef<LiveProblemRow>[]>(() => [
+  // Enrich filtered rows with CI metadata so every column uses a plain string accessor
+  const enrichedProblems = useMemo<EnrichedProblemRow[]>(
+    () => filteredProblems.map((p) => {
+      const info = ciMap.get(p.singleAppCI);
+      return { ...p, _appName: info?.appName ?? "", _director: info?.director ?? "" };
+    }),
+    [filteredProblems, ciMap],
+  );
+
+  // All columns have explicit pixel widths — no auto columns that DataTable can silently drop
+  const columns = useMemo<DataTableColumnDef<EnrichedProblemRow>[]>(() => [
     {
       id: "id",
       header: "Problem",
       accessor: "displayId",
-      width: 120,
+      width: 115,
       cell: ({ rowData }) =>
         rowData.eventId ? (
           <Link href={`${DAVIS_PROBLEM_BASE}${rowData.eventId}`} target="_blank" rel="noopener noreferrer">
@@ -847,7 +862,7 @@ export const LiveMode = () => {
       id: "ci",
       header: "AppCI",
       accessor: "singleAppCI",
-      width: 130,
+      width: 120,
       cell: ({ rowData }) => (
         <button
           onClick={() => setSelectedCi((prev) => prev === rowData.singleAppCI ? null : rowData.singleAppCI)}
@@ -860,28 +875,30 @@ export const LiveMode = () => {
     {
       id: "appName",
       header: "App Name",
-      accessor: (r: LiveProblemRow) => ciMap.get(r.singleAppCI)?.appName ?? "",
-      width: { type: "auto", maxWidth: 200 },
-      cell: ({ rowData }) => {
-        const v = ciMap.get(rowData.singleAppCI)?.appName ?? "";
-        return <Text textStyle="small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: v ? 1 : 0.3 }}>{v || "—"}</Text>;
-      },
+      accessor: "_appName",
+      width: 180,
+      cell: ({ rowData }) => (
+        <Text textStyle="small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: rowData._appName ? 1 : 0.3 }}>
+          {rowData._appName || "—"}
+        </Text>
+      ),
     },
     {
       id: "owner",
       header: "App Owner",
-      accessor: (r: LiveProblemRow) => ciMap.get(r.singleAppCI)?.director ?? "",
+      accessor: "_director",
       width: 150,
-      cell: ({ rowData }) => {
-        const v = ciMap.get(rowData.singleAppCI)?.director ?? "";
-        return <Text textStyle="small" style={{ opacity: v ? 1 : 0.3 }}>{v || "—"}</Text>;
-      },
+      cell: ({ rowData }) => (
+        <Text textStyle="small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: rowData._director ? 1 : 0.3 }}>
+          {rowData._director || "—"}
+        </Text>
+      ),
     },
     {
       id: "rootCause",
       header: "Root Cause Entity",
       accessor: "rootCause",
-      width: { type: "auto", maxWidth: 220 },
+      width: 200,
       cell: ({ rowData }) => (
         <Text textStyle="small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: rowData.rootCause ? 1 : 0.3 }}>
           {rowData.rootCause ?? "—"}
@@ -892,11 +909,11 @@ export const LiveMode = () => {
       id: "title",
       header: "Title",
       accessor: "title",
-      width: { type: "auto", maxWidth: 320 },
+      width: 280,
       cell: ({ rowData }) => (
         <button
           onClick={() => setDetailProblem(rowData)}
-          style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320, display: "block", fontSize: 12, color: Colors.Text.Neutral.Default }}
+          style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%", display: "block", fontSize: 12, color: Colors.Text.Neutral.Default }}
           title={rowData.title}
         >
           {rowData.title}
@@ -907,7 +924,7 @@ export const LiveMode = () => {
       id: "category",
       header: "Category",
       accessor: "category",
-      width: 130,
+      width: 125,
       cell: ({ rowData }) => {
         const m = catMeta(rowData.category);
         return <span style={{ display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 10, background: m.bg, color: m.color, whiteSpace: "nowrap" }}>{m.label}</span>;
@@ -916,8 +933,8 @@ export const LiveMode = () => {
     {
       id: "duration",
       header: "Duration",
-      accessor: (r: LiveProblemRow) => r.durationMs,
-      width: 95,
+      accessor: "durationMs",
+      width: 90,
       cell: ({ rowData }) => {
         const h = rowData.durationMs / 3_600_000;
         const color = h >= 12 ? regressionRed : h >= 4 ? "#F5A800" : undefined;
@@ -927,14 +944,14 @@ export const LiveMode = () => {
     {
       id: "rar",
       header: "Rev. at Risk",
-      accessor: (r: LiveProblemRow) => r.revenueAtRisk,
-      width: 120,
+      accessor: "revenueAtRisk",
+      width: 115,
       cell: ({ rowData }) => {
         const v = rowData.revenueAtRisk;
         return <Text textStyle="small" style={v > 0 ? { color: regressionRed, fontWeight: 600 } : undefined}>{v > 0 ? formatUsd(v) : "—"}</Text>;
       },
     },
-  ], [ciMap]);
+  ], []);
 
   // Detail sheet enrichment
   const detailCiInfo = useMemo<CiInfo>(() => {
@@ -1110,14 +1127,14 @@ export const LiveMode = () => {
               )}
             </div>
             <DataTable
-              data={filteredProblems}
+              data={enrichedProblems}
               columns={columns}
               loading={isLoading}
               sortable
               interactiveRows
               onActiveRowChange={(rowId) => {
                 if (rowId === null) return;
-                const row = filteredProblems[Number(rowId)];
+                const row = enrichedProblems[Number(rowId)];
                 if (row) setDetailProblem(row);
               }}
               fullWidth
