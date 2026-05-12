@@ -5,7 +5,9 @@ import Colors from "@dynatrace/strato-design-tokens/colors";
 import Borders from "@dynatrace/strato-design-tokens/borders";
 import type { PerCiRow } from "./PerCiTable";
 import type { RootCauseEntry } from "../../queries/topRootCauses";
-import { formatMttr, formatUsd, formatNumber } from "../lib/formatters";
+import type { CascadeRiskRow } from "../../queries/cascadeRisk";
+import type { CoverageGapsRow } from "../../queries/coverageGaps";
+import { formatMttr, formatNumber } from "../lib/formatters";
 import { improvementGreen, regressionRed } from "../lib/colors";
 
 const AMBER = "#F5A800";
@@ -15,6 +17,8 @@ const DT_BLUE = "#1496FF";
 export interface InsightTilesProps {
   rows: ReadonlyArray<PerCiRow>;
   rootCauses: ReadonlyArray<RootCauseEntry>;
+  cascadeRisk: ReadonlyArray<CascadeRiskRow>;
+  coverageGaps: ReadonlyArray<CoverageGapsRow>;
   selectedRootCause: string | null;
   onCiSelect: (row: PerCiRow) => void;
   onRootCauseSelect: (rc: RootCauseEntry | null) => void;
@@ -345,7 +349,7 @@ const RootCauseTile = ({
   );
 };
 
-export const InsightTiles = ({ rows, rootCauses, selectedRootCause, onCiSelect, onRootCauseSelect }: InsightTilesProps) => {
+export const InsightTiles = ({ rows, rootCauses, cascadeRisk, coverageGaps, selectedRootCause, onCiSelect, onRootCauseSelect }: InsightTilesProps) => {
   const heroes = useMemo(() => {
     return rows
       .filter((r) => r.postCount === 0 && r.preCount > 0)
@@ -370,15 +374,15 @@ export const InsightTiles = ({ rows, rootCauses, selectedRootCause, onCiSelect, 
       }));
   }, [rows]);
 
-  const topRevenue = useMemo(() => {
+  const topAffectedUsers = useMemo(() => {
     return rows
-      .filter((r) => r.postAvgImpact !== null && r.postAvgImpact > 0)
-      .sort((a, b) => (b.postAvgImpact ?? 0) - (a.postAvgImpact ?? 0))
+      .filter((r) => r.postAffectedUsers > 0)
+      .sort((a, b) => b.postAffectedUsers - a.postAffectedUsers)
       .slice(0, 5)
       .map((row) => ({
         row,
-        stat: formatUsd(row.postAvgImpact),
-        statLabel: "est. impact",
+        stat: formatNumber(row.postAffectedUsers),
+        statLabel: "affected users",
       }));
   }, [rows]);
 
@@ -424,15 +428,15 @@ export const InsightTiles = ({ rows, rootCauses, selectedRootCause, onCiSelect, 
         onSelect={onCiSelect}
       />
       <InsightTile
-        title="Revenue at Risk"
-        subtitle="Highest estimated impact (post)"
-        heroValue={topRevenue.length > 0 ? formatUsd(topRevenue[0].row.postAvgImpact) : "—"}
-        heroLabel="top impact"
+        title="Most Impacted"
+        subtitle="Highest affected users (post)"
+        heroValue={topAffectedUsers.length > 0 ? formatNumber(topAffectedUsers[0].row.postAffectedUsers) : "—"}
+        heroLabel="users impacted"
         accentColor={regressionRed}
         gradientFrom="#9A1E30"
         gradientTo="#C82D40"
-        entries={topRevenue}
-        emptyMsg="No revenue data available"
+        entries={topAffectedUsers}
+        emptyMsg="No user impact data"
         onSelect={onCiSelect}
       />
       <InsightTile
@@ -452,6 +456,228 @@ export const InsightTiles = ({ rows, rootCauses, selectedRootCause, onCiSelect, 
         selectedRootCause={selectedRootCause}
         onRootCauseSelect={onRootCauseSelect}
       />
+      <CascadeRiskTile cascadeRisk={cascadeRisk} />
+      <CoverageGapsTile coverageGaps={coverageGaps} />
     </Grid>
+  );
+};
+
+const CascadeRiskTile = ({ cascadeRisk }: { cascadeRisk: ReadonlyArray<CascadeRiskRow> }) => {
+  const top5 = cascadeRisk.slice(0, 5);
+  const maxBlastRadius = cascadeRisk.length > 0 ? cascadeRisk[0].distinct_consumers : 0;
+  const totalConsumers = new Set(cascadeRisk.flatMap((r) => Array(r.distinct_consumers).fill(r.appci))).size;
+
+  return (
+    <Surface
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: Borders.Radius.Container.Default,
+        background: Colors.Background.Surface.Default,
+        overflow: "hidden",
+        minHeight: 180,
+        border: `1px solid ${AMBER}22`,
+      }}
+    >
+      <div
+        style={{
+          background: `linear-gradient(135deg, #A06500 0%, ${AMBER} 100%)`,
+          padding: "14px 16px 12px",
+        }}
+      >
+        <Flex justifyContent="space-between" alignItems="flex-start" gap={8}>
+          <Flex flexDirection="column" gap={2} style={{ minWidth: 0, flex: 1 }}>
+            <Text textStyle="small-emphasized" style={{ color: "#fff", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.6px", opacity: 0.9, lineHeight: 1.3 }}>
+              Cascade Risk
+            </Text>
+            <Text textStyle="small" style={{ color: "#fff", opacity: 0.7, fontSize: 10, lineHeight: 1.3 }}>
+              Single points of failure
+            </Text>
+          </Flex>
+          <Flex flexDirection="column" alignItems="flex-end" gap={0} style={{ flexShrink: 0 }}>
+            <Text style={{ color: "#fff", fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
+              {maxBlastRadius}
+            </Text>
+            <Text style={{ color: "#fff", opacity: 0.7, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              downstream apps
+            </Text>
+          </Flex>
+        </Flex>
+      </div>
+      <Flex flexDirection="column" gap={0} style={{ padding: "4px 0 6px", flex: 1 }}>
+        {top5.length === 0 ? (
+          <Text
+            textStyle="small"
+            style={{ color: Colors.Text.Neutral.Default, opacity: 0.45, padding: "12px 14px" }}
+          >
+            No cascade risk data
+          </Text>
+        ) : (
+          top5.map((cr, i) => (
+            <div
+              key={cr.appci}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                padding: "7px 14px",
+                background: "transparent",
+                textAlign: "left",
+                width: "100%",
+              }}
+            >
+              <RankBadge rank={i + 1} color={AMBER} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+                  <Text
+                    textStyle="small-emphasized"
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                    }}
+                  >
+                    {cr.appci}
+                  </Text>
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 3, flexShrink: 0 }}>
+                    <Text
+                      textStyle="small-emphasized"
+                      style={{ color: AMBER, fontSize: 12, fontWeight: 700, lineHeight: 1.3 }}
+                    >
+                      {formatNumber(cr.distinct_consumers)}
+                    </Text>
+                    <Text
+                      textStyle="small"
+                      style={{ color: Colors.Text.Neutral.Default, opacity: 0.4, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}
+                    >
+                      consumers
+                    </Text>
+                  </span>
+                </div>
+                <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, opacity: 0.5, fontSize: 10, display: "block", marginTop: 1 }}>
+                  {formatNumber(cr.total_req_volume)} requests
+                </Text>
+              </div>
+            </div>
+          ))
+        )}
+      </Flex>
+    </Surface>
+  );
+};
+
+const CoverageGapsTile = ({ coverageGaps }: { coverageGaps: ReadonlyArray<CoverageGapsRow> }) => {
+  const top5 = coverageGaps.slice(0, 5);
+  const urgentCount = coverageGaps.filter((g) => g.priority === "URGENT").length;
+  const priorityColor = (priority: string) => {
+    switch (priority) {
+      case "URGENT":
+        return regressionRed;
+      case "HIGH":
+        return AMBER;
+      default:
+        return "#4A7BA7";
+    }
+  };
+
+  return (
+    <Surface
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: Borders.Radius.Container.Default,
+        background: Colors.Background.Surface.Default,
+        overflow: "hidden",
+        minHeight: 180,
+        border: `1px solid ${regressionRed}22`,
+      }}
+    >
+      <div
+        style={{
+          background: `linear-gradient(135deg, #7A1525 0%, #C82D40 100%)`,
+          padding: "14px 16px 12px",
+        }}
+      >
+        <Flex justifyContent="space-between" alignItems="flex-start" gap={8}>
+          <Flex flexDirection="column" gap={2} style={{ minWidth: 0, flex: 1 }}>
+            <Text textStyle="small-emphasized" style={{ color: "#fff", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.6px", opacity: 0.9, lineHeight: 1.3 }}>
+              Observability Gaps
+            </Text>
+            <Text textStyle="small" style={{ color: "#fff", opacity: 0.7, fontSize: 10, lineHeight: 1.3 }}>
+              T1/T2 apps without logs
+            </Text>
+          </Flex>
+          <Flex flexDirection="column" alignItems="flex-end" gap={0} style={{ flexShrink: 0 }}>
+            <Text style={{ color: "#fff", fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
+              {urgentCount}
+            </Text>
+            <Text style={{ color: "#fff", opacity: 0.7, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              urgent gaps
+            </Text>
+          </Flex>
+        </Flex>
+      </div>
+      <Flex flexDirection="column" gap={0} style={{ padding: "4px 0 6px", flex: 1 }}>
+        {top5.length === 0 ? (
+          <Text
+            textStyle="small"
+            style={{ color: Colors.Text.Neutral.Default, opacity: 0.45, padding: "12px 14px" }}
+          >
+            No coverage gaps found
+          </Text>
+        ) : (
+          top5.map((gap, i) => {
+            const color = priorityColor(gap.priority);
+            return (
+              <div
+                key={gap.applicationci}
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  padding: "7px 14px",
+                  background: "transparent",
+                  textAlign: "left",
+                  width: "100%",
+                }}
+              >
+                <RankBadge rank={i + 1} color={color} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+                    <Text
+                      textStyle="small-emphasized"
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        minWidth: 0,
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                      }}
+                    >
+                      {gap.applicationci}
+                    </Text>
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 3, flexShrink: 0 }}>
+                      <Text
+                        textStyle="small-emphasized"
+                        style={{ color, fontSize: 12, fontWeight: 700, lineHeight: 1.3, textTransform: "uppercase", fontSize: 10 }}
+                      >
+                        {gap.priority}
+                      </Text>
+                    </span>
+                  </div>
+                  <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, opacity: 0.5, fontSize: 10, display: "block", marginTop: 1 }}>
+                    {gap.p_active_probs > 0 ? `${formatNumber(gap.p_active_probs)} active problems` : gap.tier}
+                  </Text>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </Flex>
+    </Surface>
   );
 };

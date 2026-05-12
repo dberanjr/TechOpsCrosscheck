@@ -19,6 +19,8 @@ import { InsightTiles } from "../components/InsightTiles";
 import { PermissionRequired } from "../components/PermissionRequired";
 
 import { useCrosscheck } from "../context/CrosscheckContext";
+import type { CascadeRiskRow } from "../../queries/cascadeRisk";
+import type { CoverageGapsRow } from "../../queries/coverageGaps";
 import {
   recordsToPerCiRows,
   aggregateHeadlines,
@@ -33,6 +35,8 @@ import { perCiRollupQuery } from "../../queries/perCiRollup";
 import { dailyTimeseriesQuery } from "../../queries/dailyTimeseries";
 import { topRootCausesQuery, recordsToRootCauses } from "../../queries/topRootCauses";
 import type { RootCauseEntry } from "../../queries/topRootCauses";
+import { cascadeRiskQuery, recordsToCascadeRisk } from "../../queries/cascadeRisk";
+import { coverageGapsQuery, recordsToCoverageGaps } from "../../queries/coverageGaps";
 import { windowRange } from "../../queries/dqlUtils";
 import type { WindowRange as WR } from "../../queries/dqlUtils";
 import { cisOnDayQuery, recordsToCiSet } from "../../queries/cisOnDay";
@@ -94,6 +98,20 @@ export const Home = () => {
         : "",
     [pivotIso, windowDays, effective, queriesEnabled, problemScope],
   );
+  const cascadeRiskQueryString = useMemo(
+    () =>
+      queriesEnabled
+        ? cascadeRiskQuery({ pivotIso, windowDays, appCiFilter: effective, problemScope })
+        : "",
+    [pivotIso, windowDays, effective, queriesEnabled, problemScope],
+  );
+  const coverageGapsQueryString = useMemo(
+    () =>
+      queriesEnabled
+        ? coverageGapsQuery({ pivotIso, windowDays })
+        : "",
+    [pivotIso, windowDays, queriesEnabled],
+  );
 
   const range = useMemo(() => windowRange(pivotIso, windowDays), [pivotIso, windowDays]);
   const dateLabels = useMemo(
@@ -123,6 +141,14 @@ export const Home = () => {
     { query: rootCausesQueryString, ...dqlExecParams },
     { enabled: queriesEnabled },
   );
+  const cascadeRiskResult = useDql(
+    { query: cascadeRiskQueryString, ...dqlExecParams },
+    { enabled: queriesEnabled },
+  );
+  const coverageGapsResult = useDql(
+    { query: coverageGapsQueryString, ...dqlExecParams },
+    { enabled: queriesEnabled },
+  );
 
   const worstDayQueryString = useMemo(
     () =>
@@ -145,6 +171,8 @@ export const Home = () => {
   const stableRowsRef = useRef<PerCiRow[]>([]);
   const stableSeriesRef = useRef<DailySeries | null>(null);
   const stableRootCausesRef = useRef<RootCauseEntry[]>([]);
+  const stableCascadeRiskRef = useRef<CascadeRiskRow[]>([]);
+  const stableCoverageGapsRef = useRef<CoverageGapsRow[]>([]);
 
   const latestRows = useMemo(
     () => recordsToPerCiRows(perCi.data?.records, applicationList, effective),
@@ -158,10 +186,20 @@ export const Home = () => {
     () => recordsToRootCauses(rootCausesResult.data?.records),
     [rootCausesResult.data?.records],
   );
+  const latestCascadeRisk = useMemo(
+    () => recordsToCascadeRisk(cascadeRiskResult.data?.records),
+    [cascadeRiskResult.data?.records],
+  );
+  const latestCoverageGaps = useMemo(
+    () => recordsToCoverageGaps(coverageGapsResult.data?.records),
+    [coverageGapsResult.data?.records],
+  );
 
   useEffect(() => { stableRowsRef.current = latestRows; }, [latestRows]);
   useEffect(() => { stableSeriesRef.current = latestSeries; }, [latestSeries]);
   useEffect(() => { stableRootCausesRef.current = latestRootCauses; }, [latestRootCauses]);
+  useEffect(() => { stableCascadeRiskRef.current = latestCascadeRisk; }, [latestCascadeRisk]);
+  useEffect(() => { stableCoverageGapsRef.current = latestCoverageGaps; }, [latestCoverageGaps]);
 
   const displayRows = perCi.isFetching && stableRowsRef.current.length > 0
     ? stableRowsRef.current : latestRows;
@@ -169,6 +207,10 @@ export const Home = () => {
     ? stableSeriesRef.current : latestSeries;
   const displayRootCauses = rootCausesResult.isFetching && stableRootCausesRef.current.length > 0
     ? stableRootCausesRef.current : latestRootCauses;
+  const displayCascadeRisk = cascadeRiskResult.isFetching && stableCascadeRiskRef.current.length > 0
+    ? stableCascadeRiskRef.current : latestCascadeRisk;
+  const displayCoverageGaps = coverageGapsResult.isFetching && stableCoverageGapsRef.current.length > 0
+    ? stableCoverageGapsRef.current : latestCoverageGaps;
 
   const headlines = useMemo(() => aggregateHeadlines(displayRows), [displayRows]);
   const tiers = useMemo(() => aggregateTiers(displayRows), [displayRows]);
@@ -367,6 +409,8 @@ export const Home = () => {
             <InsightTiles
               rows={displayRows}
               rootCauses={displayRootCauses}
+              cascadeRisk={displayCascadeRisk}
+              coverageGaps={displayCoverageGaps}
               selectedRootCause={selectedRootCause?.name ?? null}
               onCiSelect={(row) => setDrilldownCi(row)}
               onRootCauseSelect={setSelectedRootCause}
