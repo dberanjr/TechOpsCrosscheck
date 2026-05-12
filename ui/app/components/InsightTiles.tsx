@@ -457,6 +457,7 @@ export const InsightTiles = ({ rows, rootCauses, cascadeRisk, coverageGaps, sele
         onRootCauseSelect={onRootCauseSelect}
       />
       <CascadeRiskTile cascadeRisk={cascadeRisk} />
+      <MostCriticalTile cascadeRisk={cascadeRisk} />
       <CoverageGapsTile coverageGaps={coverageGaps} />
     </Grid>
   );
@@ -569,6 +570,112 @@ const CascadeRiskTile = ({ cascadeRisk }: { cascadeRisk: ReadonlyArray<CascadeRi
   );
 };
 
+const MostCriticalTile = ({ cascadeRisk }: { cascadeRisk: ReadonlyArray<CascadeRiskRow> }) => {
+  const top5 = cascadeRisk.slice(0, 5);
+  const maxDependents = cascadeRisk.length > 0 ? cascadeRisk[0].distinct_consumers : 0;
+
+  return (
+    <Surface
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        borderRadius: Borders.Radius.Container.Default,
+        background: Colors.Background.Surface.Default,
+        overflow: "hidden",
+        minHeight: 180,
+        border: `1px solid ${improvementGreen}22`,
+      }}
+    >
+      <div
+        style={{
+          background: `linear-gradient(135deg, #4A8A15 0%, ${improvementGreen} 100%)`,
+          padding: "14px 16px 12px",
+        }}
+      >
+        <Flex justifyContent="space-between" alignItems="flex-start" gap={8}>
+          <Flex flexDirection="column" gap={2} style={{ minWidth: 0, flex: 1 }}>
+            <Text textStyle="small-emphasized" style={{ color: "#fff", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.6px", opacity: 0.9, lineHeight: 1.3 }}>
+              Most Critical Dependencies
+            </Text>
+            <Text textStyle="small" style={{ color: "#fff", opacity: 0.7, fontSize: 10, lineHeight: 1.3 }}>
+              Essential linchpin services
+            </Text>
+          </Flex>
+          <Flex flexDirection="column" alignItems="flex-end" gap={0} style={{ flexShrink: 0 }}>
+            <Text style={{ color: "#fff", fontSize: 24, fontWeight: 700, lineHeight: 1 }}>
+              {maxDependents}
+            </Text>
+            <Text style={{ color: "#fff", opacity: 0.7, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              dependent apps
+            </Text>
+          </Flex>
+        </Flex>
+      </div>
+      <Flex flexDirection="column" gap={0} style={{ padding: "4px 0 6px", flex: 1 }}>
+        {top5.length === 0 ? (
+          <Text
+            textStyle="small"
+            style={{ color: Colors.Text.Neutral.Default, opacity: 0.45, padding: "12px 14px" }}
+          >
+            No dependency data
+          </Text>
+        ) : (
+          top5.map((cr, i) => (
+            <div
+              key={cr.appci}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                padding: "7px 14px",
+                background: "transparent",
+                textAlign: "left",
+                width: "100%",
+              }}
+            >
+              <RankBadge rank={i + 1} color={improvementGreen} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 6 }}>
+                  <Text
+                    textStyle="small-emphasized"
+                    style={{
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      minWidth: 0,
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                    }}
+                  >
+                    {cr.appci}
+                  </Text>
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 3, flexShrink: 0 }}>
+                    <Text
+                      textStyle="small-emphasized"
+                      style={{ color: improvementGreen, fontSize: 12, fontWeight: 700, lineHeight: 1.3 }}
+                    >
+                      {formatNumber(cr.distinct_consumers)}
+                    </Text>
+                    <Text
+                      textStyle="small"
+                      style={{ color: Colors.Text.Neutral.Default, opacity: 0.4, fontSize: 9, textTransform: "uppercase", letterSpacing: "0.5px" }}
+                    >
+                      dependents
+                    </Text>
+                  </span>
+                </div>
+                <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, opacity: 0.5, fontSize: 10, display: "block", marginTop: 1 }}>
+                  {formatNumber(cr.total_req_volume)} requests
+                </Text>
+              </div>
+            </div>
+          ))
+        )}
+      </Flex>
+    </Surface>
+  );
+};
+
 const CoverageGapsTile = ({ coverageGaps }: { coverageGaps: ReadonlyArray<CoverageGapsRow> }) => {
   const top5 = coverageGaps.slice(0, 5);
   const urgentCount = coverageGaps.filter((g) => g.priority === "URGENT").length;
@@ -663,7 +770,7 @@ const CoverageGapsTile = ({ coverageGaps }: { coverageGaps: ReadonlyArray<Covera
                     <span style={{ display: "flex", alignItems: "baseline", gap: 3, flexShrink: 0 }}>
                       <Text
                         textStyle="small-emphasized"
-                        style={{ color, fontSize: 12, fontWeight: 700, lineHeight: 1.3, textTransform: "uppercase", fontSize: 10 }}
+                        style={{ color, fontWeight: 700, lineHeight: 1.3, textTransform: "uppercase", fontSize: 10 }}
                       >
                         {gap.priority}
                       </Text>
