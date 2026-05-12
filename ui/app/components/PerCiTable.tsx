@@ -24,11 +24,11 @@ export interface PerCiRow {
   postMTTR_ns: number | null;
   preCount: number;
   postCount: number;
-  preAvgImpact: number | null;
-  postAvgImpact: number | null;
+  preAffectedUsers: number;
+  postAffectedUsers: number;
   mttrPctChange: number | null;
   countPctChange: number | null;
-  avgImpactPctChange: number | null;
+  affectedUsersPctChange: number | null;
 }
 
 export interface PerCiTableProps {
@@ -40,9 +40,9 @@ export interface PerCiTableProps {
 }
 
 function rowVerdict(row: PerCiRow): VerdictFilter {
-  const candidates = [row.mttrPctChange, row.countPctChange, row.avgImpactPctChange];
+  const candidates = [row.mttrPctChange, row.countPctChange, row.affectedUsersPctChange];
   if (candidates.some((v) => v === NEW_EMERGENCE_SENTINEL)) return "new";
-  const primary = row.avgImpactPctChange ?? row.countPctChange ?? row.mttrPctChange;
+  const primary = row.affectedUsersPctChange ?? row.countPctChange ?? row.mttrPctChange;
   if (primary === null || primary === undefined || Number.isNaN(primary)) return "all";
   if (primary > 0.01) return "regressed";
   if (primary < -0.01) return "improved";

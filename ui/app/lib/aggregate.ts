@@ -72,11 +72,11 @@ export function recordsToPerCiRows(
         postMTTR_ns: toNumOrNull(r.postMTTR_ns),
         preCount: toNum(r.preCount),
         postCount: toNum(r.postCount),
-        preAvgImpact: toNumOrNull(r.preAvgImpact),
-        postAvgImpact: toNumOrNull(r.postAvgImpact),
+        preAffectedUsers: toNum(r.preAffectedUsers),
+        postAffectedUsers: toNum(r.postAffectedUsers),
         mttrPctChange: toNumOrNull(r.mttrPctChange),
         countPctChange: toNumOrNull(r.countPctChange),
-        avgImpactPctChange: toNumOrNull(r.avgImpactPctChange),
+        affectedUsersPctChange: toNumOrNull(r.affectedUsersPctChange),
       });
     }
   }
@@ -98,11 +98,11 @@ export function recordsToPerCiRows(
         postMTTR_ns: null,
         preCount: 0,
         postCount: 0,
-        preAvgImpact: null,
-        postAvgImpact: null,
+        preAffectedUsers: 0,
+        postAffectedUsers: 0,
         mttrPctChange: null,
         countPctChange: null,
-        avgImpactPctChange: null,
+        affectedUsersPctChange: null,
       });
     }
   }
@@ -111,8 +111,8 @@ export function recordsToPerCiRows(
 }
 
 export interface HeadlineMetrics {
-  preImpact: number;
-  postImpact: number;
+  preAffectedUsers: number;
+  postAffectedUsers: number;
   preCount: number;
   postCount: number;
   preWeightedMttrNs: number | null;
@@ -125,9 +125,9 @@ export interface HeadlineMetrics {
 const NEW = 9999;
 
 function rowVerdict(row: PerCiRow): "improved" | "regressed" | "new" | "stable" {
-  const candidates = [row.mttrPctChange, row.countPctChange, row.avgImpactPctChange];
+  const candidates = [row.mttrPctChange, row.countPctChange, row.affectedUsersPctChange];
   if (candidates.some((v) => v === NEW)) return "new";
-  const primary = row.avgImpactPctChange ?? row.countPctChange ?? row.mttrPctChange;
+  const primary = row.affectedUsersPctChange ?? row.countPctChange ?? row.mttrPctChange;
   if (primary === null || primary === undefined || Number.isNaN(primary)) return "stable";
   if (primary > 0.01) return "regressed";
   if (primary < -0.01) return "improved";
@@ -135,8 +135,8 @@ function rowVerdict(row: PerCiRow): "improved" | "regressed" | "new" | "stable" 
 }
 
 export function aggregateHeadlines(rows: ReadonlyArray<PerCiRow>): HeadlineMetrics {
-  let preImpact = 0;
-  let postImpact = 0;
+  let preAffectedUsers = 0;
+  let postAffectedUsers = 0;
   let preCount = 0;
   let postCount = 0;
   let preMttrSum = 0;
@@ -148,8 +148,8 @@ export function aggregateHeadlines(rows: ReadonlyArray<PerCiRow>): HeadlineMetri
   let newCount = 0;
 
   for (const r of rows) {
-    if (r.preAvgImpact !== null) preImpact += r.preAvgImpact;
-    if (r.postAvgImpact !== null) postImpact += r.postAvgImpact;
+    preAffectedUsers += r.preAffectedUsers;
+    postAffectedUsers += r.postAffectedUsers;
     preCount += r.preCount;
     postCount += r.postCount;
     if (r.preMTTR_ns !== null && r.preCount > 0) {
@@ -167,8 +167,8 @@ export function aggregateHeadlines(rows: ReadonlyArray<PerCiRow>): HeadlineMetri
   }
 
   return {
-    preImpact,
-    postImpact,
+    preAffectedUsers,
+    postAffectedUsers,
     preCount,
     postCount,
     preWeightedMttrNs: preMttrWeight > 0 ? preMttrSum / preMttrWeight : null,
@@ -184,20 +184,20 @@ export interface TierRollup {
   ciCount: number;
   mttrPct: number | null;
   countPct: number | null;
-  impactPct: number | null;
+  affectedUsersPct: number | null;
   preMttr: number | null;
   postMttr: number | null;
   preCount: number;
   postCount: number;
-  preImpact: number;
-  postImpact: number;
+  preAffectedUsers: number;
+  postAffectedUsers: number;
 }
 
 export function aggregateTiers(rows: ReadonlyArray<PerCiRow>): TierRollup[] {
   return CANONICAL_TIERS.map((tier) => {
     const tierRows = rows.filter((r) => r.Tier === tier);
     if (tierRows.length === 0) {
-      return { tier, ciCount: 0, mttrPct: null, countPct: null, impactPct: null, preMttr: null, postMttr: null, preCount: 0, postCount: 0, preImpact: 0, postImpact: 0 };
+      return { tier, ciCount: 0, mttrPct: null, countPct: null, affectedUsersPct: null, preMttr: null, postMttr: null, preCount: 0, postCount: 0, preAffectedUsers: 0, postAffectedUsers: 0 };
     }
     let preMttrSum = 0;
     let preMttrWeight = 0;
@@ -205,8 +205,8 @@ export function aggregateTiers(rows: ReadonlyArray<PerCiRow>): TierRollup[] {
     let postMttrWeight = 0;
     let preCount = 0;
     let postCount = 0;
-    let preImpact = 0;
-    let postImpact = 0;
+    let preAffectedUsers = 0;
+    let postAffectedUsers = 0;
     for (const r of tierRows) {
       if (r.preMTTR_ns !== null && r.preCount > 0) {
         preMttrSum += r.preMTTR_ns * r.preCount;
@@ -218,8 +218,8 @@ export function aggregateTiers(rows: ReadonlyArray<PerCiRow>): TierRollup[] {
       }
       preCount += r.preCount;
       postCount += r.postCount;
-      if (r.preAvgImpact !== null) preImpact += r.preAvgImpact;
-      if (r.postAvgImpact !== null) postImpact += r.postAvgImpact;
+      preAffectedUsers += r.preAffectedUsers;
+      postAffectedUsers += r.postAffectedUsers;
     }
     const preMttr = preMttrWeight > 0 ? preMttrSum / preMttrWeight : null;
     const postMttr = postMttrWeight > 0 ? postMttrSum / postMttrWeight : null;
@@ -228,13 +228,13 @@ export function aggregateTiers(rows: ReadonlyArray<PerCiRow>): TierRollup[] {
       ciCount: tierRows.length,
       mttrPct: pctChange(preMttr, postMttr),
       countPct: pctChange(preCount, postCount),
-      impactPct: pctChange(preImpact, postImpact),
+      affectedUsersPct: pctChange(preAffectedUsers, postAffectedUsers),
       preMttr,
       postMttr,
       preCount,
       postCount,
-      preImpact,
-      postImpact,
+      preAffectedUsers,
+      postAffectedUsers,
     };
   });
 }
@@ -242,7 +242,7 @@ export function aggregateTiers(rows: ReadonlyArray<PerCiRow>): TierRollup[] {
 export interface DailySeries {
   count: ReadonlyArray<number>;
   mttrNs: ReadonlyArray<number>;
-  impact: ReadonlyArray<number>;
+  affectedUsers: ReadonlyArray<number>;
   pivotIndex: number;
 }
 
@@ -259,12 +259,12 @@ export function extractDailySeries(
   const r = rec as RawDqlRecord;
   const count = arrayOfNumbers(r.count);
   const mttrNs = arrayOfNumbers(r.mttr_ns);
-  const impact = arrayOfNumbers(r.impact);
-  if (count.length === 0 && mttrNs.length === 0 && impact.length === 0) return null;
+  const affectedUsers = arrayOfNumbers(r.affected_users);
+  if (count.length === 0 && mttrNs.length === 0 && affectedUsers.length === 0) return null;
   return {
     count,
     mttrNs,
-    impact,
+    affectedUsers,
     pivotIndex: windowDays,
   };
 }

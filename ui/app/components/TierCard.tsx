@@ -26,13 +26,13 @@ export interface TierCardProps {
   ciCount: number;
   mttrPct: number | null | undefined;
   countPct: number | null | undefined;
-  impactPct: number | null | undefined;
+  affectedUsersPct: number | null | undefined;
   preMttr?: number | null;
   postMttr?: number | null;
   preCount?: number;
   postCount?: number;
-  preImpact?: number;
-  postImpact?: number;
+  preAffectedUsers?: number;
+  postAffectedUsers?: number;
   isLoading?: boolean;
   isInactive?: boolean;
   ciList?: readonly CiListItem[];
@@ -191,13 +191,13 @@ export const TierCard = ({
   ciCount,
   mttrPct,
   countPct,
-  impactPct,
+  affectedUsersPct,
   preMttr,
   postMttr,
   preCount,
   postCount,
-  preImpact,
-  postImpact,
+  preAffectedUsers,
+  postAffectedUsers,
   isLoading = false,
   isInactive = false,
   ciList = [],
@@ -328,7 +328,7 @@ export const TierCard = ({
         <div style={{ background: "rgba(128,128,128,0.12)" }} />
         <StatPanel label="Count" value={countPct} pre={preCount} post={postCount} />
         <div style={{ background: "rgba(128,128,128,0.12)" }} />
-        <StatPanel label="Impact" value={impactPct} pre={preImpact} post={postImpact} />
+        <StatPanel label="Affected Users" value={affectedUsersPct} pre={preAffectedUsers} post={postAffectedUsers} />
       </div>
 
       {tooltipPos !== null &&

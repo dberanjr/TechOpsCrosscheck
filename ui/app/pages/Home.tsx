@@ -181,19 +181,19 @@ export const Home = () => {
 
   const worstDays = useMemo((): WorstDaysData | null => {
     if (!displaySeries) return null;
-    const { count, impact, mttrNs, pivotIndex } = displaySeries;
+    const { count, affectedUsers, mttrNs, pivotIndex } = displaySeries;
     const pivotMs = new Date(range.pivotIso).getTime();
     const postCount = count.slice(pivotIndex);
-    const postImpact = impact.slice(pivotIndex);
+    const postAffectedUsers = affectedUsers.slice(pivotIndex);
     const postMttr = mttrNs.slice(pivotIndex);
 
     let maxCount = 0, maxCountIdx = -1;
     for (let i = 0; i < postCount.length; i++) {
       if (postCount[i] > maxCount) { maxCount = postCount[i]; maxCountIdx = i; }
     }
-    let maxImpact = 0, maxImpactIdx = -1;
-    for (let i = 0; i < postImpact.length; i++) {
-      if (postImpact[i] > maxImpact) { maxImpact = postImpact[i]; maxImpactIdx = i; }
+    let maxAffectedUsers = 0, maxAffectedUsersIdx = -1;
+    for (let i = 0; i < postAffectedUsers.length; i++) {
+      if (postAffectedUsers[i] > maxAffectedUsers) { maxAffectedUsers = postAffectedUsers[i]; maxAffectedUsersIdx = i; }
     }
     let maxMttr = 0, maxMttrIdx = -1;
     for (let i = 0; i < postMttr.length; i++) {
@@ -204,7 +204,7 @@ export const Home = () => {
 
     return {
       peakCount: maxCountIdx >= 0 && maxCount > 0 ? { dateIso: toIso(maxCountIdx), value: maxCount } : null,
-      peakImpact: maxImpactIdx >= 0 && maxImpact > 0 ? { dateIso: toIso(maxImpactIdx), value: maxImpact } : null,
+      peakAffectedUsers: maxAffectedUsersIdx >= 0 && maxAffectedUsers > 0 ? { dateIso: toIso(maxAffectedUsersIdx), value: maxAffectedUsers } : null,
       peakMttr: maxMttrIdx >= 0 && maxMttr > 0 ? { dateIso: toIso(maxMttrIdx), value: maxMttr } : null,
     };
   }, [displaySeries, range]);
@@ -284,11 +284,11 @@ export const Home = () => {
           <Section title="Headline">
             <Grid gridTemplateColumns="repeat(auto-fill, minmax(240px, 1fr))" gap={16}>
               <MetricCard
-                label="Estimated revenue impact"
-                pre={headlines.preImpact}
-                post={headlines.postImpact}
-                format={formatUsd}
-                sparklineValues={displaySeries?.impact}
+                label="Affected users"
+                pre={headlines.preAffectedUsers}
+                post={headlines.postAffectedUsers}
+                format={formatNumber}
+                sparklineValues={displaySeries?.affectedUsers}
                 pivotIndex={displaySeries?.pivotIndex ?? windowDays}
                 isLoading={perCi.isFetching || daily.isFetching}
                 preStartLabel={dateLabels.preStart}
@@ -343,13 +343,13 @@ export const Home = () => {
                   ciCount={t.ciCount}
                   mttrPct={t.mttrPct}
                   countPct={t.countPct}
-                  impactPct={t.impactPct}
+                  affectedUsersPct={t.affectedUsersPct}
                   preMttr={t.preMttr}
                   postMttr={t.postMttr}
                   preCount={t.preCount}
                   postCount={t.postCount}
-                  preImpact={t.preImpact}
-                  postImpact={t.postImpact}
+                  preAffectedUsers={t.preAffectedUsers}
+                  postAffectedUsers={t.postAffectedUsers}
                   isLoading={perCi.isFetching}
                   isInactive={tierFilter.length > 0 && !tierFilter.includes(t.tier)}
                   ciList={tierCiMap.get(t.tier)}
@@ -381,7 +381,7 @@ export const Home = () => {
 
           <Section
             title={`Per-CI comparison · ${finalFilteredRows.length}${selectedRootCause || selectedWorstDay ? ` of ${displayRows.length}` : ""} CIs`}
-            note="Revenue Impact = daily financial loss rate (ServiceNow) × problem duration per incident, averaged across the pre and post windows. Positive % = more estimated loss post-pivot (regression)."
+            note="Affected Users = sum of real users impacted by problems, aggregated across the pre and post windows. Positive % = more affected users post-pivot (regression)."
             filters={
               <>
                 <ActiveFilterBadges />
@@ -450,7 +450,7 @@ export const Home = () => {
 interface WorstDayEntry { dateIso: string; value: number; }
 interface WorstDaysData {
   peakCount: WorstDayEntry | null;
-  peakImpact: WorstDayEntry | null;
+  peakAffectedUsers: WorstDayEntry | null;
   peakMttr: WorstDayEntry | null;
 }
 
@@ -465,13 +465,13 @@ const WORST_DAY_SLOTS = [
     pick: (d: WorstDaysData) => d.peakCount,
   },
   {
-    key: "impact",
-    label: "Peak Revenue Impact",
-    subtitle: "highest single-day est. financial loss",
+    key: "affectedUsers",
+    label: "Peak Impact Day",
+    subtitle: "highest single-day affected users",
     color: "#C82D40",
     bg: "rgba(200,45,64,0.07)",
-    format: (v: number) => formatUsd(v),
-    pick: (d: WorstDaysData) => d.peakImpact,
+    format: (v: number) => `${formatNumber(v)} user${v !== 1 ? "s" : ""}`,
+    pick: (d: WorstDaysData) => d.peakAffectedUsers,
   },
   {
     key: "mttr",
@@ -774,7 +774,7 @@ const HeroBanner = ({
             maxWidth: 580,
           }}
         >
-          Before-and-after analysis of problem counts, MTTR, and estimated revenue impact
+          Before-and-after analysis of problem counts, MTTR, and affected users
           across your application portfolio. Set a pivot date to verify that a change improved
           reliability, or to surface regressions for leadership reporting.
         </div>
@@ -867,32 +867,32 @@ const MethodologyPanel = () => (
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Default, opacity: 0.75 }}>
-          Revenue Impact
+          Affected Users
         </Text>
         <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, opacity: 0.55, lineHeight: 1.6 }}>
-          Impact is estimated as daily financial loss × problem duration per incident, then summed across all CIs in a tier.
+          Affected users is the sum of real users impacted by problems, extracted from Dynatrace Davis AI correlation data. This metric quantifies the business impact in terms of user-facing outages rather than estimated financial loss.
         </Text>
         <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
           {[
             {
               n: "1",
-              title: "Financial loss rate",
-              body: "Pulled from ServiceNow via a Grail bizevent (workflow.import.servicenow.appci.service_discovered). The field u_1_day_total_financial_loss is a string like \"$5K – $15K\" or \"Over $1M\", parsed into a minLossDaily / maxLossDaily range ($/day).",
+              title: "Per-problem user count",
+              body: "Dynatrace Davis AI calculates dt.davis.affected_users_count for each correlated Problem, representing the number of real users impacted by that outage.",
             },
             {
               n: "2",
-              title: "Per-incident impact",
-              body: "duration (days) × daily loss rate. Min and max are computed, then averaged: avgImpact = (minImpactRow + maxImpactRow) / 2.",
+              title: "Problem-level aggregation",
+              body: "For each problem, we extract affected_users_count. If no users were affected (field is null), the count is zero.",
             },
             {
               n: "3",
               title: "Pre / post totals",
-              body: "Incidents are split into pre-pivot and post-pivot windows. preImpact and postImpact are the sums of avgImpact across all CIs in the tier for each window.",
+              body: "Problems are split into pre-pivot and post-pivot windows. preAffectedUsers and postAffectedUsers are the sums of affected user counts across all CIs in the tier for each window.",
             },
             {
               n: "4",
               title: "Percentage change",
-              body: "Standard ((post − pre) / pre) × 100. If pre was 0 and post > 0, it shows ∞ (new emergence). Values are capped at ±300% for display.",
+              body: "Standard ((post − pre) / pre) × 100. If pre was 0 and post > 0, it shows ∞ (new emergence). Reflects whether affected users increased or decreased post-pivot.",
             },
           ].map(({ n, title, body }) => (
             <div key={n} style={{ display: "flex", gap: 8 }}>
