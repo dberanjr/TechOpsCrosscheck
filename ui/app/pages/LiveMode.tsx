@@ -17,6 +17,7 @@ import {
 import { HoneycombChart, type HoneycombCell } from "../components/HoneycombChart";
 import { formatUsd, formatNumber } from "../lib/formatters";
 import { regressionRed } from "../lib/colors";
+import { explainProblem } from "../lib/assistApi";
 import uaGlobePng from "../../assets/ua-globe-data";
 import { CANONICAL_TIERS } from "../lib/parseTechOpsCsv";
 
@@ -576,6 +577,37 @@ const LiveProblemSheet = ({
   ciInfo: CiInfo;
   onDismiss: () => void;
 }) => {
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [isExplainingLoading, setIsExplainingLoading] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setExplanation(null);
+    setExplainError(null);
+  }, [problem?.displayId]);
+
+  const handleExplainProblem = useCallback(async () => {
+    if (!problem) return;
+    setIsExplainingLoading(true);
+    setExplainError(null);
+    try {
+      const result = await explainProblem({
+        problemId: problem.displayId,
+        title: problem.title,
+        category: problem.category,
+        rootCause: problem.rootCause,
+        impactLevel: problem.impactLevel,
+        durationMs: problem.durationMs,
+        revenueAtRisk: problem.revenueAtRisk,
+      });
+      setExplanation(result);
+    } catch (err) {
+      setExplainError((err as Error).message);
+    } finally {
+      setIsExplainingLoading(false);
+    }
+  }, [problem]);
+
   if (!problem) return null;
   const cat = catMeta(problem.category);
   const dtLink = problem.eventId ? `${DAVIS_PROBLEM_BASE}${problem.eventId}` : null;
@@ -647,6 +679,32 @@ const LiveProblemSheet = ({
           <Flex gap={8}>
             <Link href={dtLink} target="_blank" rel="noopener noreferrer">View in Dynatrace →</Link>
           </Flex>
+        )}
+
+        {/* Explain Problem Button */}
+        <Button
+          onClick={handleExplainProblem}
+          disabled={isExplainingLoading}
+          variant="accent"
+        >
+          {isExplainingLoading ? "Explaining..." : "Explain Problem"}
+        </Button>
+
+        {/* Error message */}
+        {explainError && (
+          <Surface style={{ padding: "12px 14px", borderRadius: Borders.Radius.Container.Default, background: "rgba(200,45,64,0.12)", border: `1px solid ${regressionRed}` }}>
+            <Text style={{ color: regressionRed, fontSize: 12 }}>{explainError}</Text>
+          </Surface>
+        )}
+
+        {/* Explanation */}
+        {explanation && (
+          <Surface style={{ padding: "14px 16px", borderRadius: Borders.Radius.Container.Default, background: "rgba(128,128,128,0.04)", border: "1px solid rgba(128,128,128,0.12)" }}>
+            <Flex flexDirection="column" gap={8}>
+              <Text textStyle="small-emphasized" style={{ color: Colors.Text.Neutral.Default, opacity: 0.55, textTransform: "uppercase", fontSize: 10, letterSpacing: "0.5px" }}>Problem Explanation</Text>
+              <Text textStyle="small" style={{ color: Colors.Text.Neutral.Default, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{explanation}</Text>
+            </Flex>
+          </Surface>
         )}
       </Flex>
     </Sheet>
