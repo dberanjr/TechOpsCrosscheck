@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useDql } from '@dynatrace-sdk/react-hooks';
 import { useCrosscheck } from '../context/CrosscheckContext';
 import { effectiveAppCis } from '../lib/aggregate';
@@ -93,21 +94,21 @@ function buildMasterQuery(appCiFilter: readonly string[]): string {
   | fieldsAdd appci = lower(appci)
   | fieldsAdd is_active = if(event.status == "ACTIVE", 1, else: 0)
   | summarize {active_probs=sum(is_active), probs_24h=count()}, by:{appci}
-], sourceField:applicationci, lookupField:appci, fields:{active_probs, probs_24h}
+], sourceField:applicationci, lookupField:appci, prefix:""
 
 | lookup [fetch bizevents, from:-72h
   | filter event.type == "workflow.summary.service"
   | fieldsAdd provider_appci = lower(toString(provider.appci))
   | filter isNotNull(provider_appci) and provider_appci != ""
   | summarize blast=countDistinct(lower(toString(consumer.appci))), by:{provider_appci}
-], sourceField:applicationci, lookupField:provider_appci, fields:{blast}
+], sourceField:applicationci, lookupField:provider_appci, prefix:""
 
 | lookup [fetch bizevents, from:-72h
   | filter event.type == "workflow.summary.service"
   | fieldsAdd consumer_appci = lower(toString(consumer.appci))
   | filter isNotNull(consumer_appci) and consumer_appci != ""
   | summarize deps=countDistinct(lower(toString(provider.appci))), by:{consumer_appci}
-], sourceField:applicationci, lookupField:consumer_appci, fields:{deps}`;
+], sourceField:applicationci, lookupField:consumer_appci, prefix:""`;
 }
 
 // Orphaned problems (7d) — no applicationci tag — separate query for the orphan card.
@@ -985,6 +986,7 @@ function PortfolioInsightTile({ rows }: { rows: HealthRow[] }) {
 // ---------------------------------------------------------------------------
 
 export function ObservabilityHealth() {
+  const [searchParams] = useSearchParams();
   const {
     applicationList,
     appCiFilter,
@@ -992,10 +994,22 @@ export function ObservabilityHealth() {
     directorFilter,
   } = useCrosscheck();
 
+  // Check for app query parameter (e.g., from Obs Gaps tile click)
+  const queryAppFilter = useMemo(() => {
+    const appParam = searchParams.get('app');
+    return appParam ? [appParam.toLowerCase()] : null;
+  }, [searchParams]);
+
   // Resolve the effective AppCI list — respects source (central or uploaded) and filters.
+  // If a specific app was passed via query param, use only that app.
   const effective = React.useMemo(
-    () => effectiveAppCis(applicationList, tierFilter, directorFilter, appCiFilter),
-    [applicationList, tierFilter, directorFilter, appCiFilter],
+    () => {
+      if (queryAppFilter) {
+        return queryAppFilter;
+      }
+      return effectiveAppCis(applicationList, tierFilter, directorFilter, appCiFilter);
+    },
+    [applicationList, tierFilter, directorFilter, appCiFilter, queryAppFilter],
   );
 
   const masterQueryString = React.useMemo(
