@@ -74,5 +74,5 @@ ${dqlInFilterLine("singleAppCI", appCiFilter)}
                                        else: if(postAffectedUsers == 0, -100.0,
                                        else: (toDouble(postAffectedUsers) - toDouble(preAffectedUsers)) / toDouble(preAffectedUsers) * 100)))
 | sort singleAppCI asc
-| limit 5000`;
+| limit 50000`;
 }

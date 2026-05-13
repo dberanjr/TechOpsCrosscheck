@@ -32,8 +32,9 @@ export function coverageGapsQuery(params: CoverageGapsParams): string {
     | summarize active_probs = countIf(event.status == "ACTIVE") , by: {appci = lower(appci)}
   ], sourceField: applicationci, lookupField: appci, prefix: "p."
 | fieldsAdd
-    has_logs = if(isNotNull(l.log_count) and l.log_count > 0, true, else: false),
-    priority = if(isNotNull(p.active_probs) and p.active_probs > 0 and has_logs == false, "URGENT",
+    has_logs = if(coalesce(l.log_count, 0) > 0, true, else: false)
+| fieldsAdd
+    priority = if(coalesce(p.active_probs, 0) > 0 and has_logs == false, "URGENT",
                 else: if(tier == "1 - most critical", "HIGH", else: "MEDIUM"))
 | filter has_logs == false
 | sort priority asc, tier asc

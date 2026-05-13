@@ -332,7 +332,13 @@ export const Home = () => {
     }
 
     if (selectedCascadeRisk) {
-      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedCascadeRisk.toLowerCase());
+      const cascadeRiskEntry = displayCascadeRisk.find(
+        (cr) => cr.appci.toLowerCase() === selectedCascadeRisk.toLowerCase()
+      );
+      if (cascadeRiskEntry && cascadeRiskEntry.consumers.length > 0) {
+        const consumerSet = new Set(cascadeRiskEntry.consumers.map((c) => c.toLowerCase()));
+        result = result.filter((r) => consumerSet.has(r.singleAppCI.toLowerCase()));
+      }
     }
 
     if (selectedCriticalDep) {
@@ -344,19 +350,37 @@ export const Home = () => {
     }
 
     if (selectedBlastRadius) {
-      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedBlastRadius.toLowerCase());
+      const blastRadiusEntry = displayBlastRadiusCritical.find(
+        (br) => br.appci.toLowerCase() === selectedBlastRadius.toLowerCase()
+      );
+      if (blastRadiusEntry && blastRadiusEntry.critical_consumers.length > 0) {
+        const consumerSet = new Set(blastRadiusEntry.critical_consumers.map((c) => c.toLowerCase()));
+        result = result.filter((r) => consumerSet.has(r.singleAppCI.toLowerCase()));
+      }
     }
 
     if (selectedConcentrationRisk) {
-      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedConcentrationRisk.toLowerCase());
+      const concentrationRiskEntry = displayConcentrationRisk.find(
+        (cr) => cr.appci.toLowerCase() === selectedConcentrationRisk.toLowerCase()
+      );
+      if (concentrationRiskEntry && concentrationRiskEntry.consumers.length > 0) {
+        const consumerSet = new Set(concentrationRiskEntry.consumers.map((c) => c.toLowerCase()));
+        result = result.filter((r) => consumerSet.has(r.singleAppCI.toLowerCase()));
+      }
     }
 
     if (selectedHighThroughput) {
-      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedHighThroughput.toLowerCase());
+      const highThroughputEntry = displayHighThroughputCritical.find(
+        (ht) => ht.appci.toLowerCase() === selectedHighThroughput.toLowerCase()
+      );
+      if (highThroughputEntry && highThroughputEntry.consumers.length > 0) {
+        const consumerSet = new Set(highThroughputEntry.consumers.map((c) => c.toLowerCase()));
+        result = result.filter((r) => consumerSet.has(r.singleAppCI.toLowerCase()));
+      }
     }
 
     return result;
-  }, [displayRows, selectedRootCause, selectedCascadeRisk, selectedCriticalDep, selectedCoverageGap, selectedBlastRadius, selectedConcentrationRisk, selectedHighThroughput]);
+  }, [displayRows, selectedRootCause, selectedCascadeRisk, selectedCriticalDep, selectedCoverageGap, selectedBlastRadius, selectedConcentrationRisk, selectedHighThroughput, displayCascadeRisk, displayBlastRadiusCritical, displayConcentrationRisk, displayHighThroughputCritical]);
 
   const rootCauseFilteredRows = filteredRows;
 

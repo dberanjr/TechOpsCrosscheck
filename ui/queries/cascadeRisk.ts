@@ -23,13 +23,15 @@ export function cascadeRiskQuery(params: CascadeRiskParams): string {
   return `fetch bizevents, from: -24h
 | filter event.type == "workflow.summary.service"
 | fieldsAdd provider = lower(toString(producer.appci))
-| fieldsAdd consumer_str = toString(consumer.appci)
-| filter isNotNull(provider) and provider != "" and isNotNull(consumer_str)
+| filter isNotNull(provider) and provider != ""
 | filter in(provider, {${appCiFilter.map(dqlString).join(", ")}})
-| fieldsAdd consumers = arraySize(consumer.appci[])
+| expand consumer_item = consumer.appci
+| fieldsAdd consumer_item = lower(toString(consumer_item))
+| filter isNotNull(consumer_item) and consumer_item != ""
 | summarize
-    distinct_consumers = countDistinct(toString(consumer.appci[])),
-    total_req_volume = sum(coalesce(requestCount, 0))
+    distinct_consumers = countDistinct(consumer_item),
+    total_req_volume = sum(coalesce(requestCount, 0)),
+    consumers = collectDistinct(consumer_item)
   , by:{appci = provider}
 | fieldsAdd appci = upper(appci)
 | sort distinct_consumers desc
@@ -40,6 +42,7 @@ export interface CascadeRiskRow {
   appci: string;
   distinct_consumers: number;
   total_req_volume: number;
+  consumers: string[];
 }
 
 export function recordsToCascadeRisk(records: ReadonlyArray<unknown> | undefined | null): CascadeRiskRow[] {
@@ -52,7 +55,8 @@ export function recordsToCascadeRisk(records: ReadonlyArray<unknown> | undefined
     if (!appci) continue;
     const distinct_consumers = typeof r.distinct_consumers === "number" ? r.distinct_consumers : Number(r.distinct_consumers) || 0;
     const total_req_volume = typeof r.total_req_volume === "number" ? r.total_req_volume : Number(r.total_req_volume) || 0;
-    rows.push({ appci, distinct_consumers, total_req_volume });
+    const consumers = Array.isArray(r.consumers) ? (r.consumers as unknown as string[]).filter(c => typeof c === "string") : [];
+    rows.push({ appci, distinct_consumers, total_req_volume, consumers });
   }
   return rows;
 }
