@@ -94,7 +94,29 @@ function buildMasterQuery(appCiFilter: readonly string[]): string {
   | fieldsAdd appci = lower(appci)
   | fieldsAdd is_active = if(event.status == "ACTIVE", 1, else: 0)
   | summarize {active_probs=sum(is_active), probs_24h=count()}, by:{appci}
-], sourceField:applicationci, lookupField:appci, prefix:""`;
+], sourceField:applicationci, lookupField:appci, prefix:""
+
+| lookup [fetch bizevents, from:-24h
+  | filter event.type == "workflow.summary.service"
+  | fieldsAdd provider = lower(toString(producer.appci))
+  | filter isNotNull(provider) and provider != ""
+  | expand consumer_item = consumer.appci
+  | fieldsAdd consumer_item = lower(toString(consumer_item))
+  | filter isNotNull(consumer_item) and consumer_item != ""
+  | summarize blast=countDistinct(consumer_item), by:{provider}
+  | fields provider, blast
+], sourceField:applicationci, lookupField:provider, prefix:""
+
+| lookup [fetch bizevents, from:-24h
+  | filter event.type == "workflow.summary.service"
+  | fieldsAdd consumer = lower(toString(consumer.appci))
+  | filter isNotNull(consumer) and consumer != ""
+  | expand provider_item = producer.appci
+  | fieldsAdd provider_item = lower(toString(provider_item))
+  | filter isNotNull(provider_item) and provider_item != ""
+  | summarize deps=countDistinct(provider_item), by:{consumer}
+  | fields consumer, deps
+], sourceField:applicationci, lookupField:consumer, prefix:""`;
 }
 
 // Orphaned problems (7d) — no applicationci tag — separate query for the orphan card.
