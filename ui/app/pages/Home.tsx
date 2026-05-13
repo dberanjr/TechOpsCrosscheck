@@ -17,10 +17,17 @@ import { PerCiDrilldownSheet } from "../components/PerCiDrilldownSheet";
 import { InsightTiles } from "../components/InsightTiles";
 
 import { PermissionRequired } from "../components/PermissionRequired";
+import { useNavigate } from "react-router-dom";
 
 import { useCrosscheck } from "../context/CrosscheckContext";
 import type { CascadeRiskRow } from "../../queries/cascadeRisk";
 import type { CoverageGapsRow } from "../../queries/coverageGaps";
+import type { CriticalDependenciesRow } from "../../queries/criticalDependencies";
+import type { BlastRadiusCriticalRow } from "../../queries/blastRadiusCritical";
+import type { ConcentrationRiskRow } from "../../queries/concentrationRisk";
+import type { HighThroughputCriticalRow } from "../../queries/highThroughputCritical";
+import type { ActiveProblemsInCriticalRow } from "../../queries/activeProblemsInCritical";
+import type { MttrImpactCriticalRow } from "../../queries/mttrImpactCritical";
 import {
   recordsToPerCiRows,
   aggregateHeadlines,
@@ -37,12 +44,19 @@ import { topRootCausesQuery, recordsToRootCauses } from "../../queries/topRootCa
 import type { RootCauseEntry } from "../../queries/topRootCauses";
 import { cascadeRiskQuery, recordsToCascadeRisk } from "../../queries/cascadeRisk";
 import { coverageGapsQuery, recordsToCoverageGaps } from "../../queries/coverageGaps";
+import { criticalDependenciesQuery, recordsToCriticalDependencies } from "../../queries/criticalDependencies";
+import { blastRadiusCriticalQuery, recordsToBlastRadiusCritical } from "../../queries/blastRadiusCritical";
+import { concentrationRiskQuery, recordsToConcentrationRisk } from "../../queries/concentrationRisk";
+import { highThroughputCriticalQuery, recordsToHighThroughputCritical } from "../../queries/highThroughputCritical";
+import { activeProblemsInCriticalQuery, recordsToActiveProblemsInCritical } from "../../queries/activeProblemsInCritical";
+import { mttrImpactCriticalQuery, recordsToMttrImpactCritical } from "../../queries/mttrImpactCritical";
 import { windowRange } from "../../queries/dqlUtils";
 import type { WindowRange as WR } from "../../queries/dqlUtils";
 import { cisOnDayQuery, recordsToCiSet } from "../../queries/cisOnDay";
 import uaGlobePng from "../../assets/ua-globe-data";
 
 export const Home = () => {
+  const navigate = useNavigate();
   const {
     pivotIso,
     windowDays,
@@ -62,11 +76,21 @@ export const Home = () => {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [drilldownCi, setDrilldownCi] = useState<PerCiRow | null>(null);
   const [selectedRootCause, setSelectedRootCause] = useState<RootCauseEntry | null>(null);
+  const [selectedCascadeRisk, setSelectedCascadeRisk] = useState<string | null>(null);
+  const [selectedCriticalDep, setSelectedCriticalDep] = useState<string | null>(null);
+  const [selectedCoverageGap, setSelectedCoverageGap] = useState<string | null>(null);
+  const [selectedBlastRadius, setSelectedBlastRadius] = useState<string | null>(null);
+  const [selectedConcentrationRisk, setSelectedConcentrationRisk] = useState<string | null>(null);
+  const [selectedHighThroughput, setSelectedHighThroughput] = useState<string | null>(null);
   const [selectedWorstDay, setSelectedWorstDay] = useState<{ key: string; dateIso: string; label: string } | null>(null);
 
   const handleWorstDaySelect = React.useCallback((key: string, dateIso: string, label: string) => {
     setSelectedWorstDay((prev) => (prev?.key === key ? null : { key, dateIso, label }));
   }, []);
+
+  const handleObsHealthSelect = React.useCallback((appci: string) => {
+    navigate(`/obs-health?app=${encodeURIComponent(appci)}`);
+  }, [navigate]);
 
   // Resolve the effective AppCI list every render. When applicationList is
   // empty (no source yet), this is empty and the queries stay disabled.
@@ -112,6 +136,34 @@ export const Home = () => {
         : "",
     [pivotIso, windowDays, queriesEnabled],
   );
+  const criticalDependenciesQueryString = useMemo(
+    () =>
+      queriesEnabled
+        ? criticalDependenciesQuery({ pivotIso, windowDays })
+        : "",
+    [pivotIso, windowDays, queriesEnabled],
+  );
+  const blastRadiusCriticalQueryString = useMemo(
+    () =>
+      queriesEnabled
+        ? blastRadiusCriticalQuery({ pivotIso, windowDays })
+        : "",
+    [pivotIso, windowDays, queriesEnabled],
+  );
+  const concentrationRiskQueryString = useMemo(
+    () =>
+      queriesEnabled
+        ? concentrationRiskQuery({ pivotIso, windowDays })
+        : "",
+    [pivotIso, windowDays, queriesEnabled],
+  );
+  const highThroughputCriticalQueryString = useMemo(
+    () =>
+      queriesEnabled
+        ? highThroughputCriticalQuery({ pivotIso, windowDays })
+        : "",
+    [pivotIso, windowDays, queriesEnabled],
+  );
 
   const range = useMemo(() => windowRange(pivotIso, windowDays), [pivotIso, windowDays]);
   const dateLabels = useMemo(
@@ -149,6 +201,22 @@ export const Home = () => {
     { query: coverageGapsQueryString, ...dqlExecParams },
     { enabled: queriesEnabled },
   );
+  const criticalDependenciesResult = useDql(
+    { query: criticalDependenciesQueryString, ...dqlExecParams },
+    { enabled: queriesEnabled },
+  );
+  const blastRadiusCriticalResult = useDql(
+    { query: blastRadiusCriticalQueryString, ...dqlExecParams },
+    { enabled: queriesEnabled },
+  );
+  const concentrationRiskResult = useDql(
+    { query: concentrationRiskQueryString, ...dqlExecParams },
+    { enabled: queriesEnabled },
+  );
+  const highThroughputCriticalResult = useDql(
+    { query: highThroughputCriticalQueryString, ...dqlExecParams },
+    { enabled: queriesEnabled },
+  );
 
   const worstDayQueryString = useMemo(
     () =>
@@ -173,6 +241,10 @@ export const Home = () => {
   const stableRootCausesRef = useRef<RootCauseEntry[]>([]);
   const stableCascadeRiskRef = useRef<CascadeRiskRow[]>([]);
   const stableCoverageGapsRef = useRef<CoverageGapsRow[]>([]);
+  const stableCriticalDependenciesRef = useRef<CriticalDependenciesRow[]>([]);
+  const stableBlastRadiusCriticalRef = useRef<BlastRadiusCriticalRow[]>([]);
+  const stableConcentrationRiskRef = useRef<ConcentrationRiskRow[]>([]);
+  const stableHighThroughputCriticalRef = useRef<HighThroughputCriticalRow[]>([]);
 
   const latestRows = useMemo(
     () => recordsToPerCiRows(perCi.data?.records, applicationList, effective),
@@ -194,12 +266,32 @@ export const Home = () => {
     () => recordsToCoverageGaps(coverageGapsResult.data?.records),
     [coverageGapsResult.data?.records],
   );
+  const latestCriticalDependencies = useMemo(
+    () => recordsToCriticalDependencies(criticalDependenciesResult.data?.records),
+    [criticalDependenciesResult.data?.records],
+  );
+  const latestBlastRadiusCritical = useMemo(
+    () => recordsToBlastRadiusCritical(blastRadiusCriticalResult.data?.records),
+    [blastRadiusCriticalResult.data?.records],
+  );
+  const latestConcentrationRisk = useMemo(
+    () => recordsToConcentrationRisk(concentrationRiskResult.data?.records),
+    [concentrationRiskResult.data?.records],
+  );
+  const latestHighThroughputCritical = useMemo(
+    () => recordsToHighThroughputCritical(highThroughputCriticalResult.data?.records),
+    [highThroughputCriticalResult.data?.records],
+  );
 
   useEffect(() => { stableRowsRef.current = latestRows; }, [latestRows]);
   useEffect(() => { stableSeriesRef.current = latestSeries; }, [latestSeries]);
   useEffect(() => { stableRootCausesRef.current = latestRootCauses; }, [latestRootCauses]);
   useEffect(() => { stableCascadeRiskRef.current = latestCascadeRisk; }, [latestCascadeRisk]);
   useEffect(() => { stableCoverageGapsRef.current = latestCoverageGaps; }, [latestCoverageGaps]);
+  useEffect(() => { stableCriticalDependenciesRef.current = latestCriticalDependencies; }, [latestCriticalDependencies]);
+  useEffect(() => { stableBlastRadiusCriticalRef.current = latestBlastRadiusCritical; }, [latestBlastRadiusCritical]);
+  useEffect(() => { stableConcentrationRiskRef.current = latestConcentrationRisk; }, [latestConcentrationRisk]);
+  useEffect(() => { stableHighThroughputCriticalRef.current = latestHighThroughputCritical; }, [latestHighThroughputCritical]);
 
   const displayRows = perCi.isFetching && stableRowsRef.current.length > 0
     ? stableRowsRef.current : latestRows;
@@ -212,14 +304,61 @@ export const Home = () => {
   const displayCoverageGaps = coverageGapsResult.isFetching && stableCoverageGapsRef.current.length > 0
     ? stableCoverageGapsRef.current : latestCoverageGaps;
 
+  const filteredCoverageGaps = useMemo(() => {
+    return displayCoverageGaps.filter((gap) => {
+      if (tierFilter.length > 0 && !tierFilter.includes(gap.tier)) return false;
+      if (directorFilter.length > 0 && !directorFilter.includes(gap.app_owner_name)) return false;
+      return true;
+    });
+  }, [displayCoverageGaps, tierFilter, directorFilter]);
+  const displayCriticalDependencies = criticalDependenciesResult.isFetching && stableCriticalDependenciesRef.current.length > 0
+    ? stableCriticalDependenciesRef.current : latestCriticalDependencies;
+  const displayBlastRadiusCritical = blastRadiusCriticalResult.isFetching && stableBlastRadiusCriticalRef.current.length > 0
+    ? stableBlastRadiusCriticalRef.current : latestBlastRadiusCritical;
+  const displayConcentrationRisk = concentrationRiskResult.isFetching && stableConcentrationRiskRef.current.length > 0
+    ? stableConcentrationRiskRef.current : latestConcentrationRisk;
+  const displayHighThroughputCritical = highThroughputCriticalResult.isFetching && stableHighThroughputCriticalRef.current.length > 0
+    ? stableHighThroughputCriticalRef.current : latestHighThroughputCritical;
+
   const headlines = useMemo(() => aggregateHeadlines(displayRows), [displayRows]);
   const tiers = useMemo(() => aggregateTiers(displayRows), [displayRows]);
 
-  const rootCauseFilteredRows = useMemo(() => {
-    if (!selectedRootCause) return displayRows;
-    const ciSet = new Set(selectedRootCause.cis.map((c) => c.toUpperCase()));
-    return displayRows.filter((r) => ciSet.has(r.singleAppCI.toUpperCase()));
-  }, [displayRows, selectedRootCause]);
+  const filteredRows = useMemo(() => {
+    let result = displayRows;
+
+    if (selectedRootCause) {
+      const ciSet = new Set(selectedRootCause.cis.map((c) => c.toUpperCase()));
+      result = result.filter((r) => ciSet.has(r.singleAppCI.toUpperCase()));
+    }
+
+    if (selectedCascadeRisk) {
+      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedCascadeRisk.toLowerCase());
+    }
+
+    if (selectedCriticalDep) {
+      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedCriticalDep.toLowerCase());
+    }
+
+    if (selectedCoverageGap) {
+      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedCoverageGap.toLowerCase());
+    }
+
+    if (selectedBlastRadius) {
+      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedBlastRadius.toLowerCase());
+    }
+
+    if (selectedConcentrationRisk) {
+      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedConcentrationRisk.toLowerCase());
+    }
+
+    if (selectedHighThroughput) {
+      result = result.filter((r) => r.singleAppCI.toLowerCase() === selectedHighThroughput.toLowerCase());
+    }
+
+    return result;
+  }, [displayRows, selectedRootCause, selectedCascadeRisk, selectedCriticalDep, selectedCoverageGap, selectedBlastRadius, selectedConcentrationRisk, selectedHighThroughput]);
+
+  const rootCauseFilteredRows = filteredRows;
 
   const worstDays = useMemo((): WorstDaysData | null => {
     if (!displaySeries) return null;
@@ -410,10 +549,26 @@ export const Home = () => {
               rows={displayRows}
               rootCauses={displayRootCauses}
               cascadeRisk={displayCascadeRisk}
-              coverageGaps={displayCoverageGaps}
+              criticalDependencies={displayCriticalDependencies}
+              coverageGaps={filteredCoverageGaps}
+              blastRadiusCritical={displayBlastRadiusCritical}
+              concentrationRisk={displayConcentrationRisk}
+              highThroughputCritical={displayHighThroughputCritical}
               selectedRootCause={selectedRootCause?.name ?? null}
+              selectedCascadeRisk={selectedCascadeRisk}
+              selectedCriticalDep={selectedCriticalDep}
+              selectedCoverageGap={selectedCoverageGap}
+              selectedBlastRadius={selectedBlastRadius}
+              selectedConcentrationRisk={selectedConcentrationRisk}
+              selectedHighThroughput={selectedHighThroughput}
               onCiSelect={(row) => setDrilldownCi(row)}
               onRootCauseSelect={setSelectedRootCause}
+              onCascadeRiskSelect={setSelectedCascadeRisk}
+              onCriticalDepSelect={setSelectedCriticalDep}
+              onCoverageGapSelect={handleObsHealthSelect}
+              onSelectBlastRadius={setSelectedBlastRadius}
+              onSelectConcentrationRisk={setSelectedConcentrationRisk}
+              onSelectHighThroughput={setSelectedHighThroughput}
             />
             <WorstDaysBanner
               data={worstDays}
@@ -424,7 +579,7 @@ export const Home = () => {
           </Section>
 
           <Section
-            title={`Per-CI comparison · ${finalFilteredRows.length}${selectedRootCause || selectedWorstDay ? ` of ${displayRows.length}` : ""} CIs`}
+            title={`Per-CI comparison · ${finalFilteredRows.length}${selectedRootCause || selectedCascadeRisk || selectedCriticalDep || selectedBlastRadius || selectedConcentrationRisk || selectedHighThroughput || selectedWorstDay ? ` of ${displayRows.length}` : ""} CIs`}
             note="Affected Users = sum of real users impacted by problems, aggregated across the pre and post windows. Positive % = more affected users post-pivot (regression)."
             filters={
               <>
@@ -437,6 +592,56 @@ export const Home = () => {
                     onClick={() => setSelectedRootCause(null)}
                   >
                     Root cause: {selectedRootCause.name} ✕
+                  </Chip>
+                )}
+                {selectedCascadeRisk && (
+                  <Chip
+                    color="primary"
+                    variant="emphasized"
+                    size="condensed"
+                    onClick={() => setSelectedCascadeRisk(null)}
+                  >
+                    Cascade risk: {selectedCascadeRisk.toUpperCase()} ✕
+                  </Chip>
+                )}
+                {selectedCriticalDep && (
+                  <Chip
+                    color="primary"
+                    variant="emphasized"
+                    size="condensed"
+                    onClick={() => setSelectedCriticalDep(null)}
+                  >
+                    Critical dep: {selectedCriticalDep.toUpperCase()} ✕
+                  </Chip>
+                )}
+                {selectedBlastRadius && (
+                  <Chip
+                    color="primary"
+                    variant="emphasized"
+                    size="condensed"
+                    onClick={() => setSelectedBlastRadius(null)}
+                  >
+                    Blast radius: {selectedBlastRadius.toUpperCase()} ✕
+                  </Chip>
+                )}
+                {selectedConcentrationRisk && (
+                  <Chip
+                    color="primary"
+                    variant="emphasized"
+                    size="condensed"
+                    onClick={() => setSelectedConcentrationRisk(null)}
+                  >
+                    Concentration: {selectedConcentrationRisk.toUpperCase()} ✕
+                  </Chip>
+                )}
+                {selectedHighThroughput && (
+                  <Chip
+                    color="primary"
+                    variant="emphasized"
+                    size="condensed"
+                    onClick={() => setSelectedHighThroughput(null)}
+                  >
+                    High throughput: {selectedHighThroughput.toUpperCase()} ✕
                   </Chip>
                 )}
                 {selectedWorstDay && (
