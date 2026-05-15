@@ -1,6 +1,6 @@
 {
   "$schema": "./.dt-app/app.config.schema.json",
-  "environmentUrl": "https://ual.apps.dynatrace.com/",
+  "environmentUrl": "https://your-environment.apps.dynatrace.com/",
   "app": {
     "name": "TechOpsCrosscheck",
     "version": "1.0.78",
